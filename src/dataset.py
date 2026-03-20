@@ -11,13 +11,6 @@ import pandas as pd
 class DeepFakeDataset(Dataset):
     """
     PyTorch Dataset for deepfake image classification using a metadata dataframe.
-
-    Expected columns in df:
-        - image_id
-        - filepath
-        - source_type
-        - label
-        - split
     """
 
     def __init__(self, df: pd.DataFrame, transform=None):
