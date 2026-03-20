@@ -24,7 +24,7 @@ INPAINTING_DATA_NAME = 'inpainting'
 INSIGHT_DATA_NAME = 'insight'
 TEXT2IMG_DATA_NAME = 'text2img'
 
-NUMBER_SAMPLES = 500
+NUMBER_SAMPLES = 20
 
 OUTPUT_PATH = 'data/metadata.csv'
 
@@ -156,7 +156,7 @@ def split_data(df: pd.DataFrame, test_size: float) -> pd.DataFrame:
         _, test_idx = train_test_split(
             df.index,
             test_size=test_size,
-            stratify=df["source_type"],
+            stratify=df["source_type"], # keeps the number of samples from each source_type balanced in the splits
             random_state=42
         )
         df["split"] = "train"
@@ -192,3 +192,5 @@ df = build_metadata(data_dir=DATA_DIR, source_type_dict=source_type_dict)
 df = select_samples(df=df, number_samples=NUMBER_SAMPLES)
 df_split = split_data(df=df, test_size=0.2)
 print(df_split.tail())
+save_metadata(df_split, OUTPUT_PATH)
+print("Saved!")
