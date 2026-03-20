@@ -15,13 +15,13 @@ def get_train_transforms(img_size: int = IMG_SIZE):
     return transforms.Compose([
         transforms.Resize(256),
         transforms.RandomCrop(img_size),
-        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomHorizontalFlip(p=0.5), # data augmentation
         transforms.ColorJitter(
             brightness=0.1,
             contrast=0.1,
             saturation=0.05,
             hue=0.02
-        ),
+        ), # data augmentation
         transforms.ToTensor(),
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
     ])

@@ -24,7 +24,7 @@ INPAINTING_DATA_NAME = 'inpainting'
 INSIGHT_DATA_NAME = 'insight'
 TEXT2IMG_DATA_NAME = 'text2img'
 
-NUMBER_SAMPLES = 30
+NUMBER_SAMPLES = 500
 
 OUTPUT_PATH = 'data/metadata.csv'
 
@@ -101,7 +101,7 @@ def build_metadata(data_dir: str, source_type_dict: dict) -> pd.DataFrame:
     return metadata_df
 
 
-def select_samples(df:pd.DataFrame, number_samples:int) -> pd.DataFrame:
+def select_samples(df:pd.DataFrame, number_samples:int) -> pd.DataFrame: # por real/fake
     """
     Selects the first `number_samples` samples per source_type.
     Args:
@@ -185,6 +185,9 @@ def save_metadata(df: pd.DataFrame, output_path: str) -> None:
 
 
 # --------- main --------
+
+def main():
+    return
 df = build_metadata(data_dir=DATA_DIR, source_type_dict=source_type_dict)
 df = select_samples(df=df, number_samples=NUMBER_SAMPLES)
 df_split = split_data(df=df, test_size=0.2)
