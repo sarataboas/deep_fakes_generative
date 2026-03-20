@@ -150,6 +150,7 @@ venv.bak/
 
 # Data
 data/*
+data.zip
 
 # Spyder project settings
 .spyderproject
