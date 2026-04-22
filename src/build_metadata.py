@@ -38,7 +38,7 @@ source_type_dict = {
 
 
 # ----------- Metadata construction ----------
-def build_metadata(data_dir: str, source_type_dict: dict) -> pd.DataFrame:
+def build_metadata(data_dir: str, source_type_dict: dict, ) -> pd.DataFrame:
     """
     Creates and returns a metadata dataframe with columns:
         'image_id', 'filepath', 'source_type' and 'label'
@@ -127,45 +127,39 @@ def select_samples(df:pd.DataFrame, number_samples:int) -> pd.DataFrame: # por r
     return df_selected
 
 
-def split_data(df: pd.DataFrame, test_size: float) -> pd.DataFrame:
+def split_data(df: pd.DataFrame, train_size: float = 0.7, val_size: float = 0.15) -> pd.DataFrame:
     """
-    Assigns a split to every image by adding a column 'split' to the metadata dataframe.
-    The split is stratified by 'source_type' so that the distribution of:
-        - wiki
-        - inpainting
-        - insight
-        - text2image
-    is approximately preserved across train and test sets.
-
-    Args:
-        df: the metadata dataframe returned by `build_metadata`
-        test_size: proportion of the test
-    
-    Returns:
-        pd.DataFrame: the dataframe with 'split' column added
-
-    Raises:
-        ValueError:
-            - If `source_type` does not exist
-            - If the stratified split fails
+    Atribui splits (train, val, test) de forma estratificada por 'source_type'.
+    Segue a proporção 70/15/15 definida no plano.
     """
     if "source_type" not in df.columns:
-        raise ValueError("Dataframe must contain 'source_type' column.")
-    df = df.copy()
-    try:
-        _, test_idx = train_test_split(
-            df.index,
-            test_size=test_size,
-            stratify=df["source_type"], # keeps the number of samples from each source_type balanced in the splits
-            random_state=42
-        )
-        df["split"] = "train"
-        df.loc[test_idx, "split"] = "test"
+        raise ValueError("O DataFrame precisa da coluna 'source_type' para estratificar.")
     
-    except Exception as e:
-            raise ValueError("Stratified split failed. Make sure each source_type has enough samples.") from e
+    df = df.copy()
+    
+    # 1. Primeiro corte: Separar o Treino (70%) do resto (30%)
+    train_idx, temp_idx = train_test_split(
+        df.index,
+        train_size=train_size,
+        stratify=df["source_type"],
+        random_state=42
+    )
+    
+    # 2. Segundo corte: Dividir os 30% restantes a meio (15% val, 15% test)
+    # 0.5 de 30% = 15% do total
+    val_idx, test_idx = train_test_split(
+        temp_idx,
+        train_size=0.5, 
+        stratify=df.loc[temp_idx, "source_type"],
+        random_state=42
+    )
+    
+    df["split"] = ""
+    df.loc[train_idx, "split"] = "train"
+    df.loc[val_idx, "split"] = "val"
+    df.loc[test_idx, "split"] = "test"
+    
     return df
-
 
 def save_metadata(df: pd.DataFrame, output_path: str) -> None:
     """
@@ -185,12 +179,17 @@ def save_metadata(df: pd.DataFrame, output_path: str) -> None:
 
 
 # --------- main --------
-
-def main():
-    return
-df = build_metadata(data_dir=DATA_DIR, source_type_dict=source_type_dict)
-df = select_samples(df=df, number_samples=NUMBER_SAMPLES)
-df_split = split_data(df=df, test_size=0.2)
-print(df_split.tail())
-save_metadata(df_split, OUTPUT_PATH)
-print("Saved!")
+if __name__ == "__main__":
+    # Carrega e filtra os dados
+    df = build_metadata(data_dir=DATA_DIR, source_type_dict=source_type_dict)
+    df = select_samples(df=df, number_samples=NUMBER_SAMPLES)
+    
+    # Aplica a divisão tripla (70/15/15)
+    df_split = split_data(df, train_size=0.7, val_size=0.15)
+    
+    # Guarda os resultados
+    save_metadata(df_split, OUTPUT_PATH)
+    
+    # Verificação rápida no terminal
+    print("\nResumo dos Splits por Fonte:")
+    print(pd.crosstab(df_split['source_type'], df_split['split']))
