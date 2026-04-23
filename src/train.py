@@ -4,6 +4,7 @@ import argparse
 import logging
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
 # Imports do teu projeto
 from src.setup import get_device, build_dataloaders
@@ -17,12 +18,15 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 # Funções de Treino (Lógica preservada)
 # -------------------------------------------------------------------
 
-def train_one_epoch(model, loader, optimizer, criterion, device):
-    """Executa uma época de treino (lógica original intacta)."""
+def train_one_epoch(model, loader, optimizer, criterion, device, epoch_idx):
+    """Executa uma época de treino com barra de progresso."""
     model.train()
     total_loss, correct, total = 0.0, 0, 0
-
-    for batch in loader:
+    
+    # Criamos a barra de progresso para o loader
+    pbar = tqdm(loader, desc=f"Epoch {epoch_idx+1} [Train]", leave=False)
+    
+    for batch in pbar:
         imgs = batch["image"].to(device)
         labels = batch["label"].to(device).unsqueeze(1).float()
 
@@ -36,18 +40,16 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
         preds = (torch.sigmoid(logits) >= 0.5).float()
         correct += (preds == labels).sum().item()
         total += imgs.size(0)
+        
+        # Atualiza a barra com a loss atual
+        pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
     return {"loss": total_loss / total, "acc": correct / total}
 
 def run_experiment(config):
-    """
-    Coordena a experiência usando os argumentos definidos no JSON.
-    """
-    # 0. Setup Inicial (reprodutibilidade e hardware)
     set_seed(config.get("seed", 42))
     device = get_device()
     
-    # Atalhos para as secções do config
     c_data = config["data"]
     c_model = config["model"]
     c_train = config["training"]
@@ -55,28 +57,29 @@ def run_experiment(config):
 
     logging.info(f"=== A iniciar experiência: {config['experiment_name']} ===")
 
-    # 1. Preparação de Dados (passa as secções relevantes do config)
     loaders = build_dataloaders(c_data, c_train, c_preproc)
-
-    # 2. Inicialização do Modelo
     model = build_model(c_model)
     
-    # Configuração da Loss (suporta pos_weight do config)
-    pw = torch.tensor([c_train["optimizer"]["pos_weight"]]).to(device) if "pos_weight" in c_train["optimizer"] else None
+    # --- CORREÇÃO DO ACESSO AO OPTIMIZER ---
+    # Verifica se os dados estão dentro de "optimizer" ou na raiz de "training"
+    opt_config = c_train.get("optimizer", c_train) 
+    lr = opt_config.get("lr", 1e-3)
+    wd = opt_config.get("weight_decay", 1e-4)
+    pw_val = opt_config.get("pos_weight", 1.0)
+
+    pw = torch.tensor([pw_val]).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pw)
 
-    # Otimizador baseado no config
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()), 
-        lr=c_train["optimizer"]["lr"], 
-        weight_decay=c_train["optimizer"].get("weight_decay", 1e-4)
+        lr=lr, 
+        weight_decay=wd
     )
     
-    # Scheduler baseado no config
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, 
-        T_max=c_train["scheduler"]["T_max"]
-    )
+    # --- CORREÇÃO DO SCHEDULER ---
+    scheduler_type = c_train["scheduler"].get("type", "cosine")
+    t_max = c_train["scheduler"].get("T_max", 10)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=t_max)
 
     best_auc = 0.0
     history = []
@@ -93,7 +96,10 @@ def run_experiment(config):
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=c_train["num_epochs"] - epoch)
 
         # Treino e Validação
-        train_metrics = train_one_epoch(model, loaders['train'], optimizer, criterion, device)
+        train_metrics = train_one_epoch(model, loaders['train'], optimizer, criterion, device, epoch)
+        
+        # Opcional: Adicionar barra também na avaliação
+        logging.info(f"A validar época {epoch+1}...")
         val_metrics = evaluate(model, loaders['val'], criterion, device)
         scheduler.step()
 

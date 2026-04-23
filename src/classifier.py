@@ -94,7 +94,8 @@ def build_model(model_config: dict) -> nn.Module:
     Cria o modelo usando a secção 'model' do ficheiro JSON.
     """
     model_type = model_config.get("model_type", "baseline")
-    dropout = model_config.get("dropout_rate", 0.3)
+    # No teu JSON usas "dropout_rate", vamos garantir que o código lê isso:
+    dropout = model_config.get("dropout_rate", 0.3) 
     
     if model_type == "baseline":
         kernel_size = model_config.get("kernel_size", 3)

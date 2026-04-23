@@ -1,36 +1,37 @@
 {
-    "experiment_name": "baseline_cnn_initial",
+    "experiment_name": "baseline_cnn_v1",
     "seed": 42,
     "data": {
-        "number_samples_per_class": 1000,
+        "metadata_path": "data/metadata.csv",
+        "number_samples_per_class": 2000,
         "train_size": 0.7,
-        "val_size": 0.15,
-        "metadata_path": "data/metadata.csv"
+        "val_size": 0.15
     },
     "preprocessing": {
         "img_size": 224
     },
     "model": {
-        "model_type": "baseline",
+        "model_type": "efficientnet",
         "dropout_rate": 0.2,
         "kernel_size": 3
     },
     "training": {
-        "optimizer_type": "adamw",
-        "lr": 1e-3,
-        "weight_decay": 1e-4,
         "num_epochs": 20,
         "batch_size": 32,
         "use_weighted_sampler": false,
-        "pos_weight": 1.0,
-        "unfreeze_epoch": 0,
-        "early_stopping": {
-            "enabled": true,
-            "patience": 5
+        "optimizer": {
+            "type": "adamw",
+            "lr": 1e-3,
+            "weight_decay": 1e-4,
+            "pos_weight": 1.0
         },
-        "scheduler": {
-            "type": "cosine",
-            "T_max": 10
+        "early_stopping": { 
+            "enabled": true, 
+            "patience": 5 
+        },
+        "scheduler": { 
+            "type": "cosine", 
+            "T_max": 20 
         }
     }
 }

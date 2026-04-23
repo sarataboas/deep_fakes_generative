@@ -26,16 +26,19 @@ def get_data_split(df: pd.DataFrame, selected_split: str) -> pd.DataFrame:
     return split_df
 
 def get_class_weights(df: pd.DataFrame) -> torch.Tensor:
-    """Calcula pesos para o WeightedRandomSampler."""
-    counts = df["label"].value_counts().to_dict()
+    """Calcula pesos para o WeightedRandomSampler baseando-se na coluna 'label'."""
+    counts = df["label"].value_counts().sort_index().values # Garante ordem das classes
     total = len(df)
-    weight_per_class = {cls: total / count for cls, count in counts.items()}
-    weights = df["label"].map(weight_per_class).values
-    return torch.tensor(weights, dtype=torch.float32)
+    # Peso é o inverso da frequência
+    weights_per_class = total / (len(counts) * counts)
+    
+    # Mapeia cada amostra ao seu peso correspondente
+    sample_weights = [weights_per_class[int(label)] for label in df["label"]]
+    return torch.tensor(sample_weights, dtype=torch.float32)
 
 def build_dataloaders(config_data: dict, config_train: dict, config_preproc: dict) -> dict:
     """
-    Cria os DataLoaders usando as secções 'data', 'training' e 'preprocessing' do JSON.
+    Cria os DataLoaders de forma robusta.
     """
     # 1. Carregar metadados
     df_full = load_data_csv(config_data["metadata_path"])
@@ -46,25 +49,26 @@ def build_dataloaders(config_data: dict, config_train: dict, config_preproc: dic
     val_df   = get_data_split(df_full, 'val')
     test_df  = get_data_split(df_full, 'test')
 
-    # 3. Instanciar Datasets com o img_size correto
+    # 3. Instanciar Datasets
     train_ds = DeepFakeDataset(train_df, transform=get_train_transforms(img_size=img_size))
     val_ds   = DeepFakeDataset(val_df,   transform=get_test_transforms(img_size=img_size))
     test_ds  = DeepFakeDataset(test_df,  transform=get_test_transforms(img_size=img_size))
 
-    # 4. Configurar Sampler se use_weighted_sampler for true
+    # 4. Configurar Sampler (Importante para classes desequilibradas)
     sampler = None
     shuffle = True
     if config_train.get("use_weighted_sampler", False):
         weights = get_class_weights(train_df)
         sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
-        shuffle = False
+        shuffle = False # Shuffle deve ser False se usarmos Sampler
 
-    # 5. Criar Loaders
+    # 5. Extração segura do batch_size
     batch_size = config_train.get("batch_size", 32)
+
     loaders = {
-        'train': DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle, sampler=sampler),
-        'val':   DataLoader(val_ds,   batch_size=batch_size, shuffle=False),
-        'test':  DataLoader(test_ds,  batch_size=batch_size, shuffle=False)
+        'train': DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle, sampler=sampler, num_workers=2),
+        'val':   DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=2),
+        'test':  DataLoader(test_ds,  batch_size=batch_size, shuffle=False, num_workers=2)
     }
     
     return loaders
