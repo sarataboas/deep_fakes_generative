@@ -11,9 +11,13 @@
         "img_size": 224
     },
     "model": {
-        "model_type": "efficientnet",
-        "dropout_rate": 0.2,
-        "kernel_size": 3
+        "model_type": "baseline_cnn",
+        "kernel_size": 3,
+        "stride": 1,
+        "padding": null,
+        "channels": [32, 64, 128],
+        "hidden_dim": 256,
+        "dropout_rate": 0.2
     },
     "training": {
         "num_epochs": 20,
