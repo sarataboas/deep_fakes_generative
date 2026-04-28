@@ -1,0 +1,46 @@
+{
+  "experiment_name": "vae_baseline",
+  "seed": 42,
+
+  "data": {
+    "metadata_path": "data/metadata.csv",
+    "train_source": "wiki"
+  },
+
+  "preprocessing": {
+    "img_size": 64
+  },
+
+  "model": {
+    "latent_dim": 256,
+    "feature_maps": 64,
+    "img_channels": 3
+  },
+
+  "training": {
+    "num_epochs": 100,
+    "batch_size": 64,
+    "num_workers": 2,
+
+    "lr": 0.0002,
+    "weight_decay": 0.0,
+
+    "beta": 0.0005,
+
+    "scheduler": {
+      "type": "cosine",
+      "T_max": 50
+    },
+
+    "early_stopping": {
+      "enabled": true,
+      "patience": 10
+    },
+
+    "save_dir": "outputs/vae_baseline",
+    "checkpoint_dir": "checkpoints",
+
+    "sample_every": 5,
+    "num_generated_samples": 16
+  }
+}
