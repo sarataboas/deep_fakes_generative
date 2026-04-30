@@ -1,5 +1,5 @@
 {
-    "experiment_name": "baseline_cnn_metrics_updated",
+    "experiment_name": "cnn_v5_warmup_gradclip",
     "seed": 42,
     "data": {
         "metadata_path": "data/metadata.csv",
@@ -16,20 +16,25 @@
         "hidden_dim": 256
     },
     "training": {
-        "num_epochs": 30,
+        "num_epochs": 50,
         "batch_size": 32,
-        "use_weighted_sampler": false,
+        "use_weighted_sampler": true,
+        "gradient_clip": 1.0,
         "optimizer": {
             "type": "adamw",
-            "lr": 1e-3,
+            "lr": 3e-4,
             "weight_decay": 1e-4,
             "pos_weight": 1.0
         },
-        "early_stopping": { 
-            "enabled": false
+        "early_stopping": {
+            "enabled": true,
+            "patience": 10
         },
-        "scheduler": { 
-            "type": "none"
+        "scheduler": {
+            "type": "cosine_warmup",
+            "T_max": 50,
+            "warmup_epochs": 5,
+            "warmup_start_lr": 1e-6
         }
     }
 }

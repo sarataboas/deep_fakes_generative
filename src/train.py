@@ -7,10 +7,7 @@ import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 from PIL import Image
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    roc_auc_score, confusion_matrix
-)
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, confusion_matrix
 
 from src.setup import get_device, build_dataloaders
 from src.classifier import build_model
@@ -45,6 +42,7 @@ class Trainer:
         self.criterion = self._build_criterion()
         self.optimizer = self._build_optimizer()
         self.scheduler = self._build_scheduler(self.c_train["num_epochs"])
+        self.grad_clip  = self.c_train.get("gradient_clip", None)
 
     # ------------------------------------------------------------------
     # Setup helpers
@@ -52,7 +50,8 @@ class Trainer:
 
     def _build_criterion(self) -> nn.Module:
         opt_cfg = self.c_train.get("optimizer", {})
-        # pos_weight > 1 up-weights the fake class; useful for imbalanced datasets
+        # pos_weight scales the loss of the positive class (label=1 = REAL).
+        # To up-weight fakes (label=0), reduce pos_weight below 1.0 instead.
         pw = torch.tensor([opt_cfg.get("pos_weight", 1.0)]).to(self.device)
         return nn.BCEWithLogitsLoss(pos_weight=pw)
 
@@ -67,12 +66,43 @@ class Trainer:
         )
 
     def _build_scheduler(self, t_max: int) -> torch.optim.lr_scheduler.LRScheduler:
-        sched_cfg = self.c_train.get("scheduler", {})
-        # Only cosine is supported for now; extend here if needed
-        return torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer,
-            T_max=sched_cfg.get("T_max", t_max),
-        )
+        sched_cfg  = self.c_train.get("scheduler", {})
+        sched_type = sched_cfg.get("type", "cosine")
+
+        if sched_type == "none":
+            return torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda _: 1.0)
+
+        if sched_type == "cosine":
+            return torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer,
+                T_max=sched_cfg.get("T_max", t_max),
+            )
+
+        if sched_type == "cosine_warmup":
+            base_lr       = self.c_train.get("optimizer", {}).get("lr", 1e-3)
+            warmup_epochs = sched_cfg.get("warmup_epochs", 5)
+            warmup_start  = sched_cfg.get("warmup_start_lr", 1e-6)
+            T_max         = sched_cfg.get("T_max", t_max)
+
+            # LinearLR: ramp from warmup_start_lr → base_lr over warmup_epochs steps
+            warmup = torch.optim.lr_scheduler.LinearLR(
+                self.optimizer,
+                start_factor=warmup_start / base_lr,
+                end_factor=1.0,
+                total_iters=warmup_epochs,
+            )
+            # CosineAnnealingLR: decay from base_lr over the remaining epochs
+            cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer,
+                T_max=T_max - warmup_epochs,
+            )
+            return torch.optim.lr_scheduler.SequentialLR(
+                self.optimizer,
+                schedulers=[warmup, cosine],
+                milestones=[warmup_epochs],
+            )
+
+        raise ValueError(f"Unknown scheduler type: '{sched_type}'")
 
     # ------------------------------------------------------------------
     # Training
@@ -92,6 +122,8 @@ class Trainer:
             logits = self.model(imgs)
             loss   = self.criterion(logits, labels)
             loss.backward()
+            if self.grad_clip is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
             self.optimizer.step()
 
             total_loss += loss.item() * imgs.size(0)
@@ -142,7 +174,7 @@ class Trainer:
                 "loss":     train_metrics["loss"],
                 "val_loss": val_metrics["loss"],
                 "val_auc":  val_metrics["auc"],
-                "val_f1":   val_metrics["f1"],
+                "val_macro_f1": val_metrics["macro_f1"],
             }
             history.append(epoch_log)
 
@@ -150,7 +182,7 @@ class Trainer:
                 f"Epoch {epoch + 1}/{num_epochs} | "
                 f"loss={epoch_log['loss']:.4f} | "
                 f"val_auc={epoch_log['val_auc']:.4f} | "
-                f"val_f1={epoch_log['val_f1']:.4f}"
+                f"val_macro_f1={epoch_log['val_macro_f1']:.4f}"
             )
 
             # Save checkpoint whenever val AUC improves
@@ -203,13 +235,13 @@ class Trainer:
         auc = roc_auc_score(all_labels, all_probs) if len(set(all_labels)) > 1 else None
 
         return {
-            "loss":        total_loss / total,
-            "accuracy":    accuracy_score(all_labels, all_preds),
-            "precision":   precision_score(all_labels, all_preds, zero_division=0),
-            "recall":      recall_score(all_labels, all_preds, zero_division=0),
-            "f1":          f1_score(all_labels, all_preds, zero_division=0),
-            "auc":         auc,
-            "conf_matrix": confusion_matrix(all_labels, all_preds).tolist(),
+            "loss":     total_loss / total,
+            "accuracy": accuracy_score(all_labels, all_preds),
+            # pos_label=0 → F1 for the FAKE class; the signal a deepfake detector should track
+            # macro averages F1 equally across both classes — penalises failures on either
+            "macro_f1":   f1_score(all_labels, all_preds, average="macro", zero_division=0),
+            "auc":        auc,
+            "conf_matrix": confusion_matrix(all_labels, all_preds, labels=[0, 1]).tolist(),
         }
 
     @torch.no_grad()
@@ -241,9 +273,20 @@ class Trainer:
                 labels.append(int(row["label"]))
 
             preds = [int(p >= 0.5) for p in probs]
+
+            # pos_label=0 → F1 for the FAKE class (label=0), which is what a
+            # deepfake detector should optimise for.
+            # pos_label=1 is also shown so both classes are visible.
+            crosstab = pd.crosstab(
+                pd.Series(labels, name="true"),
+                pd.Series(preds,  name="pred"),
+            )
+
             results[source] = {
-                "acc": accuracy_score(labels, preds),
-                "f1":  f1_score(labels, preds, zero_division=0),
+                "acc":      accuracy_score(labels, preds),
+                "f1_fake":  f1_score(labels, preds, pos_label=0, average="binary", zero_division=0),
+                "f1_real":  f1_score(labels, preds, pos_label=1, average="binary", zero_division=0),
+                "crosstab": crosstab,
             }
 
         return results
@@ -255,6 +298,8 @@ class Trainer:
     def _save_checkpoint(self) -> None:
         os.makedirs("checkpoints", exist_ok=True)
         torch.save(self.model.state_dict(), f"checkpoints/{self.name}.pt")
+        with open(f"checkpoints/{self.name}.json", "w") as f:
+            json.dump(self.config, f, indent=2)
 
     def load_best(self) -> None:
         """Loads the best checkpoint saved during fit()."""
@@ -283,12 +328,34 @@ if __name__ == "__main__":
     test_metrics = trainer.evaluate("test")
     logging.info(
         f"Test | AUC={test_metrics['auc']:.4f} | "
-        f"F1={test_metrics['f1']:.4f} | "
+        f"Macro_F1={test_metrics['macro_f1']:.4f} | "
         f"Acc={test_metrics['accuracy']:.4f}"
     )
+    tn, fp, fn, tp = (
+        test_metrics["conf_matrix"][0][0],
+        test_metrics["conf_matrix"][0][1],
+        test_metrics["conf_matrix"][1][0],
+        test_metrics["conf_matrix"][1][1],
+    )
+    logging.info(
+        "Confusion matrix (rows=true, cols=predicted):\n"
+        "                pred FAKE   pred REAL\n"
+        f"  true FAKE      {tn:>7}     {fp:>7}\n"
+        f"  true REAL      {fn:>7}     {tp:>7}"
+    )
+
+    os.makedirs("results", exist_ok=True)
+    test_metrics_path = f"results/{config['experiment_name']}_test_metrics.json"
+    with open(test_metrics_path, "w") as f:
+        json.dump(test_metrics, f, indent=2)
+    logging.info(f"Test metrics saved to {test_metrics_path}")
 
     # Per-generator breakdown on the test set
     logging.info("=== Per-generator evaluation ===")
     per_gen = trainer.evaluate_per_generator()
     for gen, m in per_gen.items():
-        logging.info(f"  {gen}: Acc={m['acc']:.4f} | F1={m['f1']:.4f}")
+        logging.info(
+            f"  {gen}: Acc={m['acc']:.4f} | "
+            f"F1_fake={m['f1_fake']:.4f} | F1_real={m['f1_real']:.4f}"
+        )
+        logging.info(f"\n{m['crosstab'].to_string()}\n")

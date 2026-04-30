@@ -1,5 +1,5 @@
 {
-    "experiment_name": "baseline_cnn_metrics_updated",
+    "experiment_name": "cnn_v3_lr",
     "seed": 42,
     "data": {
         "metadata_path": "data/metadata.csv",
@@ -18,18 +18,20 @@
     "training": {
         "num_epochs": 30,
         "batch_size": 32,
-        "use_weighted_sampler": false,
+        "use_weighted_sampler": true,
         "optimizer": {
             "type": "adamw",
-            "lr": 1e-3,
+            "lr": 3e-4,
             "weight_decay": 1e-4,
             "pos_weight": 1.0
         },
-        "early_stopping": { 
-            "enabled": false
+        "early_stopping": {
+            "enabled": true,
+            "patience": 7
         },
-        "scheduler": { 
-            "type": "none"
+        "scheduler": {
+            "type": "cosine",
+            "T_max": 30
         }
     }
 }

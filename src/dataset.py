@@ -54,7 +54,7 @@ class DeepFakeDataset(Dataset):
         sample = {
             "image": image,
             "label": label,
-            "image_id": row["image_id"],
+            "image_id": row.get("image_id", ""),
             "source_type": row["source_type"],
             "filepath": row["filepath"],
         }

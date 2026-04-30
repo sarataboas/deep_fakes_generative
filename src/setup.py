@@ -65,10 +65,22 @@ def build_dataloaders(config_data: dict, config_train: dict, config_preproc: dic
     # 5. Extração segura do batch_size
     batch_size = config_train.get("batch_size", 32)
 
+    num_workers = 8
+    # pin_memory speeds up CPU→GPU transfers; only beneficial with CUDA
+    pin_memory = torch.cuda.is_available()
+    # persistent_workers keeps worker processes alive between epochs (avoids respawn overhead)
+    persistent_workers = num_workers > 0
+
     loaders = {
-        'train': DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle, sampler=sampler, num_workers=2),
-        'val':   DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=2),
-        'test':  DataLoader(test_ds,  batch_size=batch_size, shuffle=False, num_workers=2)
+        'train': DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
+                            num_workers=num_workers, pin_memory=pin_memory,
+                            persistent_workers=persistent_workers),
+        'val':   DataLoader(val_ds,   batch_size=batch_size, shuffle=False,
+                            num_workers=num_workers, pin_memory=pin_memory,
+                            persistent_workers=persistent_workers),
+        'test':  DataLoader(test_ds,  batch_size=batch_size, shuffle=False,
+                            num_workers=num_workers, pin_memory=pin_memory,
+                            persistent_workers=persistent_workers),
     }
-    
+
     return loaders

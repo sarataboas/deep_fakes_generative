@@ -3,9 +3,7 @@
     "seed": 42,
     "data": {
         "metadata_path": "data/metadata.csv",
-        "number_samples_per_class": 2000,
-        "train_size": 0.7,
-        "val_size": 0.15
+        "trainval_fraction": 1.0
     },
     "preprocessing": {
         "img_size": 224
