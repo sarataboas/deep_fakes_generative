@@ -1,5 +1,5 @@
 {
-  "experiment_name": "vae_baseline",
+  "experiment_name": "vae_kl_annealing",
   "seed": 42,
 
   "data": {
@@ -19,14 +19,22 @@
   },
 
   "training": {
-    "num_epochs": 100,
+    "num_epochs": 150,
     "batch_size": 64,
     "num_workers": 2,
 
-    "lr": 0.0001,
+    "lr": 0.0002,
     "weight_decay": 0.0,
 
     "beta": 1.0,
+
+    "kl_annealing": {
+      "enabled": true,
+      "type": "linear",
+      "start_beta": 0.0,
+      "end_beta": 4.0,
+      "warmup_epochs": 70
+    },
 
     "scheduler": {
       "type": "cosine",
@@ -34,11 +42,11 @@
     },
 
     "early_stopping": {
-      "enabled": true,
-      "patience": 10
+      "enabled": false,
+      "patience": 15
     },
 
-    "save_dir": "outputs/vae_baseline",
+    "save_dir": "outputs/vae_kl_annealing_150epochs_2e-4_lr",
     "checkpoint_dir": "checkpoints",
 
     "sample_every": 5,
