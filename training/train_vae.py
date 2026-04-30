@@ -10,6 +10,7 @@ from torchvision.utils import save_image, make_grid
 
 from src.setup import get_device, build_dataloaders
 from models.variational_autoencoder import BaselineVAE
+from models.variational_autoencoder_128 import VAE128
 from src.utils import set_seed, save_history
 
 
@@ -30,6 +31,25 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 #     total_loss = reconstruction_loss + beta * kl_loss
 
 #     return total_loss, reconstruction_loss, kl_loss
+
+def build_vae_model(model_config):
+    model_name = model_config.get("architecture", "4_layers")
+
+    if model_name == "4_layers":
+        return BaselineVAE(
+            img_channels=model_config.get("img_channels", 3),
+            feature_maps=model_config.get("feature_maps", 32),
+            latent_dim=model_config.get("latent_dim", 128),
+        )
+
+    if model_name == "5_layers":
+        return VAE128(
+            img_channels=model_config.get("img_channels", 3),
+            feature_maps=model_config.get("feature_maps", 32),
+            latent_dim=model_config.get("latent_dim", 256),
+        )
+
+    raise ValueError(f"Unknown VAE model name: {model_name}")
 
 def vae_loss(recon_imgs, imgs, mu, logvar, beta=1.0):
     reconstruction_loss = F.mse_loss(recon_imgs, imgs, reduction="sum")
@@ -233,11 +253,7 @@ def run_experiment(config):
     logging.info(f"Validation batches: {len(loaders['val'])}")
     logging.info(f"Test batches: {len(loaders['test'])}")
 
-    model = BaselineVAE(
-        img_channels=c_model.get("img_channels", 3),
-        feature_maps=c_model.get("feature_maps", 32),
-        latent_dim=c_model.get("latent_dim", 128),
-    ).to(device)
+    model = build_vae_model(c_model).to(device)
 
     optimizer = torch.optim.Adam(
         model.parameters(),
