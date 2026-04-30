@@ -6,7 +6,8 @@
         "trainval_fraction": 0.5
     },
     "preprocessing": {
-        "img_size": 224
+        "img_size": 224,
+        "type": "classifier"
     },
     "model": {
         "model_type": "baseline_cnn",

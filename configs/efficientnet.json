@@ -6,7 +6,8 @@
         "trainval_fraction": 1.0
     },
     "preprocessing": {
-        "img_size": 224
+        "img_size": 224, 
+        "type": "classifier"
     },
     "model": {
         "model_type": "efficientnet",
