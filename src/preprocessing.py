@@ -22,6 +22,7 @@ def get_train_transforms(img_size: int = 224):
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
     ])
 
+
 def get_test_transforms(img_size: int = 224):
     """
     Cria as transformações de teste/validação.
@@ -31,4 +32,13 @@ def get_test_transforms(img_size: int = 224):
         transforms.CenterCrop(img_size),
         transforms.ToTensor(),
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ])
+
+
+
+def get_vae_transforms(img_size=64):
+    return transforms.Compose([
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,)*3, (0.5,)*3),
     ])

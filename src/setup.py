@@ -3,7 +3,7 @@ import torch
 import os
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from src.dataset import DeepFakeDataset
-from src.preprocessing import get_train_transforms, get_test_transforms
+from src.preprocessing import get_train_transforms, get_test_transforms, get_vae_transforms
 
 def get_device():
     """Retorna o dispositivo disponível: CUDA, MPS ou CPU."""
@@ -43,16 +43,34 @@ def build_dataloaders(config_data: dict, config_train: dict, config_preproc: dic
     # 1. Carregar metadados
     df_full = load_data_csv(config_data["metadata_path"])
     img_size = config_preproc.get("img_size", 224)
+    preprocessing_type = config_preproc.get("type", "classifier")
     
     # 2. Criar subsets de dados
     train_df = get_data_split(df_full, 'train')
     val_df   = get_data_split(df_full, 'val')
     test_df  = get_data_split(df_full, 'test')
 
+
+    if preprocessing_type == "vae":
+        train_transform = get_vae_transforms(img_size=img_size)
+        val_transform = get_vae_transforms(img_size=img_size)
+        test_transform = get_vae_transforms(img_size=img_size)
+
+    elif preprocessing_type == "classifier":
+        train_transform = get_train_transforms(img_size=img_size)
+        val_transform = get_test_transforms(img_size=img_size)
+        test_transform = get_test_transforms(img_size=img_size)
+
+    else:
+        raise ValueError(
+            f"Unknown preprocessing type: {preprocessing_type}. "
+            "Use 'vae' or 'classifier'."
+        )
+
     # 3. Instanciar Datasets
-    train_ds = DeepFakeDataset(train_df, transform=get_train_transforms(img_size=img_size))
-    val_ds   = DeepFakeDataset(val_df,   transform=get_test_transforms(img_size=img_size))
-    test_ds  = DeepFakeDataset(test_df,  transform=get_test_transforms(img_size=img_size))
+    train_ds = DeepFakeDataset(train_df, transform=train_transform)
+    val_ds   = DeepFakeDataset(val_df,   transform=val_transform)
+    test_ds  = DeepFakeDataset(test_df,  transform=test_transform)
 
     # 4. Configurar Sampler (Importante para classes desequilibradas)
     sampler = None
