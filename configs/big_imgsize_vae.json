@@ -1,5 +1,5 @@
 {
-  "experiment_name": "vae_baseline",
+  "experiment_name": "vae_big_imgsize",
   "seed": 42,
 
   "data": {
@@ -8,38 +8,43 @@
   },
 
   "preprocessing": {
-    "img_size": 64,
+    "img_size": 128,
     "type": "vae"
   },
 
   "model": {
-    "latent_dim": 128,
+    "latent_dim": 256,
     "feature_maps": 32,
     "img_channels": 3,
-    "architecture": "4_layers"
+    "architecture": "5_layers"
   },
 
   "training": {
-    "num_epochs": 100,
+    "num_epochs": 50,
     "batch_size": 64,
     "num_workers": 2,
 
-    "lr": 0.0001,
+    "lr": 0.0002,
     "weight_decay": 0.0,
 
-    "beta": 1.0,
+    "kl_annealing": {
+      "enabled": true,
+      "type": "linear",
+      "start_beta": 0.0,
+      "end_beta": 2.0,
+      "warmup_epochs": 70
+    },
 
     "scheduler": {
       "type": "cosine",
-      "T_max": 100
+      "T_max": 150
     },
 
     "early_stopping": {
-      "enabled": true,
-      "patience": 10
+      "enabled": false
     },
 
-    "save_dir": "outputs/vae_baseline",
+    "save_dir": "outputs/vae_big_imgsize",
     "checkpoint_dir": "checkpoints",
 
     "sample_every": 5,
