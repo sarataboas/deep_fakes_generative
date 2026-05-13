@@ -151,6 +151,7 @@ venv.bak/
 # Data
 data/*
 data.zip
+face_crop_final/*
 
 # Spyder project settings
 .spyderproject
