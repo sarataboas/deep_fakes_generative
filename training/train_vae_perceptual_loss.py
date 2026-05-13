@@ -15,6 +15,8 @@ from src.utils import set_seed, save_history
 
 from models.variational_autoencoder import BaselineVAE
 from models.variational_autoencoder_128 import VAE128
+from models.variational_autoencoder_v2 import BaselineVAEv2
+from models.variational_autoencoder_128_v2 import VAE128v2
 
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
@@ -41,6 +43,21 @@ def build_vae_model(model_config):
             latent_dim=model_config.get("latent_dim", 256),
         )
 
+    # Variantes v2: decoder Upsample + Conv2d (sem checkerboard artifacts)
+    if model_name == "vae64_v2":
+        return BaselineVAEv2(
+            img_channels=model_config.get("img_channels", 3),
+            feature_maps=model_config.get("feature_maps", 32),
+            latent_dim=model_config.get("latent_dim", 128),
+        )
+
+    if model_name == "vae128_v2":
+        return VAE128v2(
+            img_channels=model_config.get("img_channels", 3),
+            feature_maps=model_config.get("feature_maps", 32),
+            latent_dim=model_config.get("latent_dim", 256),
+        )
+
     raise ValueError(f"Unknown VAE model name: {model_name}")
 
 
@@ -50,22 +67,52 @@ def build_vae_model(model_config):
 
 class VGGPerceptualLoss(nn.Module):
     """
-    Perceptual loss using pretrained VGG16 features.
+    Multi-layer perceptual loss using pretrained VGG16 features.
 
-    Assumes input images are normalized in [-1, 1].
-    Internally converts them to ImageNet normalization for VGG.
+    Extrai features em múltiplas camadas intermédias e calcula MSE
+    normalizado em cada uma, somando os resultados — conforme o paper.
+
+    As camadas usadas por defeito são relu1_2, relu2_1, relu3_1:
+      - relu1_2 (layer 3):  cor e textura de baixo nível
+      - relu2_1 (layer 6):  contornos e padrões locais
+      - relu3_1 (layer 11): estrutura facial global
+
+    Inclui relu1_2 é essencial: sem ela a loss é cega à cor.
+
+    Assume imagens normalizadas em [-1, 1].
     """
 
-    def __init__(self, device, layer_cutoff=16):
+    # Índices das camadas relu na VGG16.features
+    LAYER_MAP = {
+        "relu1_1": 1,  "relu1_2": 3,
+        "relu2_1": 6,  "relu2_2": 8,
+        "relu3_1": 11,
+    }
+
+    def __init__(self, device, layers=None):
         super().__init__()
 
-        weights = VGG16_Weights.IMAGENET1K_V1
-        vgg = vgg16(weights=weights).features[:layer_cutoff].to(device).eval()
+        if layers is None:
+            layers = ["relu1_2", "relu2_1", "relu3_1"]
 
+        # Ordena por índice para garantir que as fatias são sequenciais
+        layer_indices = sorted(
+            [(name, self.LAYER_MAP[name]) for name in layers],
+            key=lambda x: x[1],
+        )
+
+        vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1).features
         for param in vgg.parameters():
             param.requires_grad = False
+        vgg = vgg.to(device).eval()
 
-        self.vgg = vgg
+        # Divide a VGG em fatias não-sobrepostas: cada fatia recebe
+        # como input a saída da fatia anterior, tal como na rede original.
+        self.slices = nn.ModuleList()
+        prev = 0
+        for _, idx in layer_indices:
+            self.slices.append(nn.Sequential(*list(vgg.children())[prev : idx + 1]))
+            prev = idx + 1
 
         self.register_buffer(
             "mean",
@@ -79,17 +126,22 @@ class VGGPerceptualLoss(nn.Module):
     def preprocess_for_vgg(self, x):
         x = (x + 1.0) / 2.0
         x = torch.clamp(x, 0.0, 1.0)
-        x = (x - self.mean) / self.std
-        return x
+        return (x - self.mean) / self.std
 
     def forward(self, recon_imgs, imgs):
-        recon_imgs = self.preprocess_for_vgg(recon_imgs)
-        imgs = self.preprocess_for_vgg(imgs)
+        recon = self.preprocess_for_vgg(recon_imgs)
+        # imgs.detach() para que nenhum gradiente passe pelas features reais
+        real = self.preprocess_for_vgg(imgs.detach())
 
-        recon_features = self.vgg(recon_imgs)
-        img_features = self.vgg(imgs)
+        total_loss = 0.0
+        for slice_net in self.slices:
+            recon = slice_net(recon)
+            with torch.no_grad():
+                real = slice_net(real)
+            # MSE normalizado pelo nº de elementos — corresponde à fórmula do paper
+            total_loss = total_loss + F.mse_loss(recon, real)
 
-        return F.l1_loss(recon_features, img_features)
+        return total_loss
 
 
 def vae_perceptual_loss(
@@ -270,7 +322,7 @@ def validate_one_epoch(
 # -------------------------------------------------------------------
 
 def validate_train_sources(train_sources):
-    allowed_sources = {"inpainting", "insight", "text2img"}
+    allowed_sources = {"inpainting", "insight", "text2img", "wiki"}
 
     if not isinstance(train_sources, list):
         raise ValueError("data.train_source must be a list.")
@@ -352,7 +404,7 @@ def run_experiment(config):
 
     perceptual_loss_fn = VGGPerceptualLoss(
         device=device,
-        layer_cutoff=c_train.get("perceptual_layer_cutoff", 16),
+        layers=c_train.get("perceptual_layers", ["relu1_2", "relu2_1", "relu3_1"]),
     ).to(device)
 
     optimizer = torch.optim.Adam(

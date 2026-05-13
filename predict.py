@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 from PIL import Image
 
-from src.classifier import build_model
+from classifier.classifier import build_model
 from src.preprocessing import get_test_transforms
 
 

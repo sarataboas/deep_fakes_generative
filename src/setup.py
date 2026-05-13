@@ -50,6 +50,13 @@ def build_dataloaders(config_data: dict, config_train: dict, config_preproc: dic
     val_df   = get_data_split(df_full, 'val')
     test_df  = get_data_split(df_full, 'test')
 
+    # Filtrar por source_type se especificado (usado pela VAE/GAN para treinar só em certas fontes)
+    train_source = config_data.get("train_source")
+    if train_source is not None:
+        train_df = train_df[train_df["source_type"].isin(train_source)].reset_index(drop=True)
+        val_df   = val_df[val_df["source_type"].isin(train_source)].reset_index(drop=True)
+        test_df  = test_df[test_df["source_type"].isin(train_source)].reset_index(drop=True)
+
 
     if preprocessing_type == "vae":
         train_transform = get_vae_transforms(img_size=img_size)

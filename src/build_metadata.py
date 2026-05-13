@@ -225,11 +225,9 @@ def main():
 
     config   = load_config(args.config)
     data_cfg = config["data"]
-    data_dir = "face_crop_final" # Ou podes adicionar "data_dir" ao JSON se quiseres
-    samples = data_cfg.get("number_samples_per_class", 1000)
-    train_pct = data_cfg.get("train_size", 0.7)
-    val_pct = data_cfg.get("val_size", 0.15)
-    output_csv = data_cfg.get("metadata_path", "data/metadata.csv")
+
+    trainval_fraction = data_cfg.get("trainval_fraction", 1.0)
+    output_csv        = data_cfg.get("metadata_path", "data/metadata.csv")
 
     logging.info(f"trainval_fraction={trainval_fraction} | output={output_csv}")
 

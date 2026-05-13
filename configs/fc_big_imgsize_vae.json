@@ -4,7 +4,7 @@
 
   "data": {
     "metadata_path": "face_crop_final/face_crop_metadata.csv",
-    "train_source": ["inpainting", "insight", "text2img"]
+    "train_source": ["wiki"]
   },
 
   "preprocessing": {

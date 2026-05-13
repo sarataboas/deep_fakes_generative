@@ -22,7 +22,7 @@ from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from src.setup import get_device, get_class_weights
 from src.dataset import DeepFakeDataset
 from src.preprocessing import get_train_transforms, get_test_transforms
-from src.train import Trainer
+from classifier.train import Trainer
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 

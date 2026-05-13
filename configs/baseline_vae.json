@@ -4,7 +4,7 @@
 
   "data": {
     "metadata_path": "data/metadata.csv",
-    "train_source": ["inpainting", "insight", "text2img"]
+    "train_source": ["wiki"]
   },
 
   "preprocessing": {

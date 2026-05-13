@@ -190,7 +190,7 @@ def validate_one_epoch(model, loader, device, beta):
 # -------------------------------------------------------------------
 
 def validate_train_sources(train_sources):
-    allowed_sources = {"inpainting", "insight", "text2img"}
+    allowed_sources = {"inpainting", "insight", "text2img", "wiki"}
 
     if not isinstance(train_sources, list):
         raise ValueError(
@@ -206,7 +206,7 @@ def validate_train_sources(train_sources):
     if invalid_sources:
         raise ValueError(
             f"Invalid train_source values: {sorted(invalid_sources)}. "
-            f"Allowed synthetic sources are: {sorted(allowed_sources)}"
+            f"Allowed sources are: {sorted(allowed_sources)}"
         )
 
 
