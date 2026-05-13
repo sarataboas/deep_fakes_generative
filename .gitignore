@@ -223,3 +223,6 @@ plots/
 # Results
 results/
 outputs/
+
+# Face cropped 
+face_crop_final/

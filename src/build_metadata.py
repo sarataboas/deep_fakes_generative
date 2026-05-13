@@ -227,12 +227,14 @@ def main():
     data_cfg = config["data"]
 
     trainval_fraction = data_cfg.get("trainval_fraction", 1.0)
-    output_csv        = data_cfg.get("metadata_path", "data/metadata.csv")
+    output_csv        = data_cfg.get("metadata_path", "data/metadata_cropped.csv")
 
     logging.info(f"trainval_fraction={trainval_fraction} | output={output_csv}")
 
     # 1. Collect all samples; balance fake generators to min available count
-    real_df, fake_gen_dfs = collect_and_balance(data_dir="data")
+    #real_df, fake_gen_dfs = collect_and_balance(data_dir="data")
+
+    real_df, fake_gen_dfs = collect_and_balance(data_dir="face_crop_final")
 
     # 2. Build fixed full-size pools (70/15/15, interleaved for subset consistency)
     train_pool, val_pool, test_df = make_pools(real_df, fake_gen_dfs)
