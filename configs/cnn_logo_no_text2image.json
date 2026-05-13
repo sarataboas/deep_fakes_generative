@@ -1,0 +1,37 @@
+{
+    "experiment_name": "cnn_logo_no_text2image",
+    "seed": 42,
+    "data": {
+        "metadata_path": "data/metadata.csv",
+        "trainval_fraction": 0.5,
+        "held_out_generator": "text2image"
+    },
+    "preprocessing": {
+        "img_size": 224
+    },
+    "model": {
+        "model_type": "residual_cnn",
+        "dropout_rate": 0.0,
+        "channels": [32, 64, 128, 256],
+        "hidden_dim": 256
+    },
+    "training": {
+        "num_epochs": 50,
+        "batch_size": 32,
+        "use_weighted_sampler": true,
+        "optimizer": {
+            "type": "adamw",
+            "lr": 3e-4,
+            "weight_decay": 1e-4,
+            "pos_weight": 1.0
+        },
+        "early_stopping": {
+            "enabled": true,
+            "patience": 10
+        },
+        "scheduler": {
+            "type": "cosine",
+            "T_max": 50
+        }
+    }
+}
