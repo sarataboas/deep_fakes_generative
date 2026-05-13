@@ -15,7 +15,8 @@
   "model": {
     "latent_dim": 128,
     "feature_maps": 32,
-    "img_channels": 3
+    "img_channels": 3,
+    "architecture": "4_layers"
   },
 
   "training": {
