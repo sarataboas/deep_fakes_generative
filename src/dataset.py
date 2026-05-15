@@ -1,7 +1,7 @@
 """
-Creates the Dataset Class
+PyTorch Dataset for the deepfake detection project.
+Loads images on demand from a metadata DataFrame produced by build_metadata.py.
 """
-
 
 from PIL import Image
 from torch.utils.data import Dataset
@@ -10,15 +10,15 @@ import pandas as pd
 
 class DeepFakeDataset(Dataset):
     """
-    PyTorch Dataset for deepfake image classification using a metadata dataframe.
+    Map-style Dataset that reads images lazily from disk.
+
+    Each sample is a dict so that training loops can access metadata
+    (source_type, filepath) alongside the image tensor without needing
+    a separate lookup structure.
     """
 
     def __init__(self, df: pd.DataFrame, transform=None):
-        """
-        Args:
-            df: Metadata dataframe.
-            transform: torchvision transform pipeline to apply to each image.
-        """
+        # reset_index ensures iloc indexing is contiguous after any prior filtering
         self.df = df.reset_index(drop=True)
         self.transform = transform
 

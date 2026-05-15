@@ -20,18 +20,26 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 # Loss
 # -------------------------------------------------------------------
 
-def vae_loss(recon_imgs, imgs, mu, logvar, beta=1.0):
-    recon_loss = F.mse_loss(recon_imgs, imgs, reduction="mean")
+def vae_loss(recon_imgs, imgs, mu, logvar, beta: float = 1.0) -> torch.Tensor:
+    """
+    ELBO loss = reconstruction loss + beta * KL divergence.
 
+    recon_loss: pixel-level MSE — pushes the decoder to reproduce the input.
+    kl_loss:    KL(q(z|x) || N(0,I)) — regularises the latent space to stay
+                close to a standard Gaussian, enabling random sampling at inference.
+    beta > 1 increases disentanglement pressure at the cost of reconstruction quality.
+    """
+    recon_loss = F.mse_loss(recon_imgs, imgs, reduction="mean")
     kl_loss = -0.5 * torch.mean(
         torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)
     )
-
     return recon_loss + beta * kl_loss
 
-def denormalize_imagenet(imgs):
+
+def denormalize_imagenet(imgs: torch.Tensor) -> torch.Tensor:
+    """Reverses ImageNet normalisation to bring pixel values back to [0, 1]."""
     mean = torch.tensor([0.485, 0.456, 0.406], device=imgs.device).view(1, 3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225], device=imgs.device).view(1, 3, 1, 1)
+    std  = torch.tensor([0.229, 0.224, 0.225], device=imgs.device).view(1, 3, 1, 1)
     return torch.clamp(imgs * std + mean, 0, 1)
 
 
@@ -125,7 +133,8 @@ def run_experiment(config):
 
     logging.info(f"=== VAE Experiment: {config['experiment_name']} ===")
 
-    # SAME loader as classifier (important)
+    # Shared loader infrastructure with the classifier — preprocessing type
+    # is set to 'vae' in the config so the [-1, 1] normalisation is applied.
     loaders = build_dataloaders(c_data, c_train, c_preproc)
     logging.info(f"Train batches: {len(loaders['train'])}")
     logging.info(f"Val batches: {len(loaders['val'])}")

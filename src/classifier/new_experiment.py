@@ -35,6 +35,9 @@ def _set_nested(d: dict, key_path: str, raw_value: str) -> None:
 
     original = node[leaf_key]
     try:
+        # Cast the raw string to the same type as the original value so the
+        # config schema stays consistent (e.g. "0.001" stays a float, not a string).
+        # bool must be checked before int because isinstance(True, int) is True in Python.
         if isinstance(original, bool):
             value = raw_value.lower() in ("true", "1", "yes")
         elif isinstance(original, int):

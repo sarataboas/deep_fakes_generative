@@ -116,6 +116,7 @@ class Trainer:
         pbar = tqdm(self.loaders["train"], desc=f"Epoch {epoch_idx + 1} [Train]", leave=False)
         for batch in pbar:
             imgs   = batch["image"].to(self.device)
+            # unsqueeze(1): BCEWithLogitsLoss requires labels and logits to share shape (batch, 1)
             labels = batch["label"].to(self.device).unsqueeze(1).float()
 
             self.optimizer.zero_grad()
@@ -185,7 +186,8 @@ class Trainer:
                 f"val_macro_f1={epoch_log['val_macro_f1']:.4f}"
             )
 
-            # Save checkpoint whenever val AUC improves
+            # AUC as checkpoint metric: more robust than accuracy on imbalanced data
+            # and threshold-free, so it tracks the model's discriminative power directly.
             if epoch_log["val_auc"] > best_auc:
                 best_auc = epoch_log["val_auc"]
                 epochs_no_improve = 0

@@ -37,16 +37,20 @@ def build_logo_dataloaders(config_data, config_train, config_preproc, held_out_g
     def filter_split(split):
         split_df = df[df["split"] == split]
         if split in ("train", "val"):
-            # Remove held-out generator from training signal; keep all real images
+            # Exclude the held-out generator's fake images from training and validation.
+            # Real images (label=1) are always kept regardless of source_type.
             split_df = split_df[
                 (split_df["label"] == 1) |
                 (split_df["source_type"] != held_out_generator)
             ]
+        # Test split intentionally keeps ALL generators, including the held-out one.
+        # The point of LOGO is to measure how the model generalises to a generator
+        # it has never seen — removing it from the test set would defeat that purpose.
         return split_df.reset_index(drop=True)
 
     train_df = filter_split("train")
     val_df   = filter_split("val")
-    test_df  = filter_split("test")  # all generators present — needed for per-generator eval
+    test_df  = filter_split("test")
 
     train_generators = sorted(train_df[train_df["label"] == 0]["source_type"].unique().tolist())
     logging.info(f"LOGO: held out = '{held_out_generator}'")

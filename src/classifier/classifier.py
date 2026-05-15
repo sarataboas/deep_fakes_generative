@@ -12,6 +12,14 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 # -------------------------------------------------------------------
 
 class BaselineCNN(nn.Module):
+    """
+    Custom CNN for binary deepfake classification.
+
+    Stacks configurable Conv→BN→ReLU→MaxPool blocks followed by a
+    global-average-pooling head. The number and width of blocks is
+    controlled by the `channels` list.
+    """
+
     def __init__(
         self,
         kernel_size: int = 3,
@@ -22,6 +30,7 @@ class BaselineCNN(nn.Module):
         dropout: float = 0.2,
     ):
         super().__init__()
+        # "same" padding by default: keeps spatial size unchanged after each conv
         pad = kernel_size // 2 if padding is None else padding
 
         blocks = []
@@ -37,6 +46,8 @@ class BaselineCNN(nn.Module):
 
         self.features = nn.Sequential(*blocks)
         self.classifier = nn.Sequential(
+            # Global average pooling: collapses any spatial size to (batch, C, 1, 1),
+            # making the classifier independent of input resolution.
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(channels[-1], hidden_dim),
@@ -48,7 +59,7 @@ class BaselineCNN(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)
         return self.classifier(x)
-    
+
 
 class ResBlock(nn.Module):
     def __init__(self, in_ch: int, out_ch: int):
@@ -75,6 +86,14 @@ class ResBlock(nn.Module):
 
 
 class ResidualCNN(nn.Module):
+    """
+    Residual CNN for binary deepfake classification.
+
+    Same head as BaselineCNN but uses ResBlocks instead of plain conv blocks.
+    Skip connections allow gradients to flow more cleanly in deeper networks,
+    reducing the vanishing-gradient risk seen in plain CNNs.
+    """
+
     def __init__(
         self,
         channels: list[int] = [32, 64, 128, 256],
@@ -124,6 +143,6 @@ def build_model(model_config: dict) -> nn.Module:
             dropout=dropout,
         )
     else:
-        raise ValueError(f"Modelo {model_type} desconhecido.")
+        raise ValueError(f"Unknown model type: '{model_type}'.")
 
     return model.to(get_device())

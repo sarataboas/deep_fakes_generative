@@ -39,30 +39,31 @@ def denormalize_vae(imgs):
 
 @torch.no_grad()
 def extract_latents(model, loader, device, max_batches=20):
+    """
+    Encodes images and returns the posterior means (mu) as latent representations.
+
+    We use mu rather than a sampled z because mu is the deterministic centre of
+    each image's posterior — it gives a stable, noise-free representation that
+    is more suitable for visualisation and clustering than a single noisy sample.
+    """
     model.eval()
 
-    all_mu = []
-    all_labels = []
-    all_sources = []
+    all_mu, all_labels, all_sources = [], [], []
 
     for batch_idx, batch in enumerate(loader):
         if batch_idx >= max_batches:
             break
 
         imgs = batch["image"].to(device)
-        mu, logvar = model.encoder(imgs)
-
+        mu, _ = model.encoder(imgs)  # logvar discarded — we only need the mean
         all_mu.append(mu.cpu())
 
         if "label" in batch:
             all_labels.extend(batch["label"].tolist())
-
         if "source_type" in batch:
             all_sources.extend(batch["source_type"])
 
-    all_mu = torch.cat(all_mu, dim=0).numpy()
-
-    return all_mu, all_labels, all_sources
+    return torch.cat(all_mu, dim=0).numpy(), all_labels, all_sources
 
 
 def plot_pca(latents, save_path):
@@ -81,46 +82,47 @@ def plot_pca(latents, save_path):
 
 @torch.no_grad()
 def save_interpolation(model, loader, device, save_path, num_steps=10):
+    """
+    Linearly interpolates between two images in latent space and saves the result.
+
+    z = (1 - alpha) * mu_a + alpha * mu_b, alpha in [0, 1].
+    A smooth transition indicates a well-structured latent space; abrupt jumps
+    suggest the encoder has not learned a continuous manifold.
+    """
     model.eval()
 
     batch = next(iter(loader))
-    imgs = batch["image"].to(device)
+    imgs  = batch["image"].to(device)
 
-    img_a = imgs[0:1]
-    img_b = imgs[1:2]
+    mu_a, _ = model.encoder(imgs[0:1])
+    mu_b, _ = model.encoder(imgs[1:2])
 
-    mu_a, _ = model.encoder(img_a)
-    mu_b, _ = model.encoder(img_b)
-
-    interpolated = []
-
+    frames = []
     for alpha in torch.linspace(0, 1, num_steps, device=device):
         z = (1 - alpha) * mu_a + alpha * mu_b
-        decoded = model.decoder(z)
-        interpolated.append(decoded)
+        frames.append(model.decoder(z))
 
-    interpolated = torch.cat(interpolated, dim=0)
-    interpolated = denormalize_vae(interpolated)
-
-    grid = make_grid(interpolated.cpu(), nrow=num_steps)
+    grid = make_grid(denormalize_vae(torch.cat(frames, dim=0)).cpu(), nrow=num_steps)
     save_image(grid, save_path)
 
 
 @torch.no_grad()
 def save_reconstruction_check(model, loader, device, save_path, max_images=8):
+    """
+    Saves a side-by-side grid of originals (top row) and reconstructions (bottom row).
+    Useful for assessing reconstruction quality without any sampling randomness.
+    """
     model.eval()
 
     batch = next(iter(loader))
-    imgs = batch["image"][:max_images].to(device)
-
+    imgs  = batch["image"][:max_images].to(device)
     recon, _, _ = model(imgs)
 
-    imgs = denormalize_vae(imgs)
-    recon = denormalize_vae(recon)
-
-    comparison = torch.cat([imgs, recon], dim=0)
-    grid = make_grid(comparison.cpu(), nrow=max_images)
-
+    # Stack originals and reconstructions so they appear as two rows in the grid
+    grid = make_grid(
+        torch.cat([denormalize_vae(imgs), denormalize_vae(recon)], dim=0).cpu(),
+        nrow=max_images,
+    )
     save_image(grid, save_path)
 
 

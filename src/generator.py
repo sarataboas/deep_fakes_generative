@@ -66,7 +66,11 @@ class BaselineVAE(nn.Module):
 
     def reparameterize(self, mu, logvar):
         """
-        z = mu + sigma * epsilon
+        Reparameterisation trick: z = mu + sigma * epsilon, epsilon ~ N(0, I).
+
+        Sampling z directly would block gradients. Expressing z as a deterministic
+        function of mu, logvar, and a fixed noise sample epsilon allows the gradient
+        to flow back through mu and logvar during training.
         """
         std = torch.exp(0.5 * logvar)
         epsilon = torch.randn_like(std)
