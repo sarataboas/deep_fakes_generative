@@ -1,5 +1,5 @@
 {
-  "experiment_name": "07_baseline_vae_perceptual_loss_ConvTranspose",
+  "experiment_name": "07_baseline_vae_multilayer_perceptual_loss",
 
   "seed": 42,
 
@@ -50,7 +50,7 @@
       "patience": 20
     },
 
-    "save_dir": "outputs/07_baseline_vae_perceptual_loss_ConvTranspose",
+    "save_dir": "outputs/07_baseline_vae_multilayer_perceptual_loss",
     "checkpoint_dir": "checkpoints",
 
     "sample_every": 5,

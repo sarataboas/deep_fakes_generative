@@ -1,5 +1,5 @@
 {
-  "experiment_name": "baseline_vae_perceptual_loss",
+  "experiment_name": "08_baseline_vae_perceptual_loss_upsampling+convolution",
 
   "seed": 42,
 
@@ -50,7 +50,7 @@
       "patience": 20
     },
 
-    "save_dir": "outputs/baseline_vae_perceptual_loss",
+    "save_dir": "outputs/08_baseline_vae_perceptual_loss_upsampling+convolution",
     "checkpoint_dir": "checkpoints",
 
     "sample_every": 5,
