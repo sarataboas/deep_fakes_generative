@@ -4,6 +4,7 @@
 
   "data": {
     "metadata_path": "data/metadata.csv",
+    "trainval_fraction": 0.5,
     "train_source": ["wiki"]
   },
 
@@ -35,7 +36,7 @@
     },
 
     "early_stopping": {
-      "enabled": true,
+      "enabled": false,
       "patience": 10
     },
 

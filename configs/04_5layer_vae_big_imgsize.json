@@ -1,5 +1,5 @@
 {
-  "experiment_name": "vae_latent256_beta2",
+  "experiment_name": "5_layer_vae_big_imgsize",
   "seed": 42,
 
   "data": {
@@ -8,7 +8,7 @@
   },
 
   "preprocessing": {
-    "img_size": 64,
+    "img_size": 128,
     "type": "vae"
   },
 
@@ -16,11 +16,11 @@
     "latent_dim": 256,
     "feature_maps": 32,
     "img_channels": 3,
-    "architecture": "4_layers"
+    "architecture": "5_layers"
   },
 
   "training": {
-    "num_epochs": 150,
+    "num_epochs": 100,
     "batch_size": 64,
     "num_workers": 2,
 
@@ -32,19 +32,20 @@
       "type": "linear",
       "start_beta": 0.0,
       "end_beta": 2.0,
-      "warmup_epochs": 70
+      "warmup_epochs": 20
     },
 
     "scheduler": {
       "type": "cosine",
-      "T_max": 150
+      "T_max": 100
     },
 
     "early_stopping": {
-      "enabled": false
+      "enabled": false,
+      "patience": 10
     },
 
-    "save_dir": "outputs/vae_latent256_beta2",
+    "save_dir": "outputs/5_layer_vae_big_imgsize",
     "checkpoint_dir": "checkpoints",
 
     "sample_every": 5,
