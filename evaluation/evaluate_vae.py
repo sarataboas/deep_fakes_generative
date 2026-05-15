@@ -1,3 +1,18 @@
+"""
+Qualitative evaluation of a trained VAE model.
+
+Produces four outputs for visual inspection:
+  - test_reconstructions.png : original vs reconstructed images side-by-side
+  - generated_samples.png    : images sampled from the prior z ~ N(0, I)
+  - latent_interpolation.png : linear interpolation between two encoded images
+  - latent_pca_test.png      : 2-D PCA projection of the test-set latent space
+
+Usage:
+    python evaluation/evaluate_vae.py \\
+        --config configs/vae_perceptual_loss.json \\
+        --checkpoint checkpoints/vae_perceptual_loss.pt
+"""
+
 import os
 import json
 import argparse
@@ -25,6 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 # -------------------------------------------------------------------
 
 def build_vae_model(model_config):
+    """Instantiates the correct VAE class from config.model.architecture."""
     model_name = model_config.get("architecture", "vae64")
 
     if model_name == "4_layers":
@@ -63,10 +79,16 @@ def build_vae_model(model_config):
 # -------------------------------------------------------------------
 
 def denormalize_vae(imgs):
+    """Converts VAE output from [-1, 1] to [0, 1] for saving/display."""
     return torch.clamp((imgs + 1.0) / 2.0, 0.0, 1.0)
 
 
 def load_checkpoint(model, checkpoint_path, device):
+    """
+    Loads model weights from a checkpoint file.
+    Handles both full checkpoint dicts (with model_state_dict key) and raw state dicts.
+    Returns (epoch, best_val_loss) if available, otherwise (None, None).
+    """
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
     if "model_state_dict" in checkpoint:
@@ -87,6 +109,7 @@ def load_checkpoint(model, checkpoint_path, device):
 
 @torch.no_grad()
 def save_test_reconstructions(model, loader, device, save_path, max_images=8):
+    """Saves a grid with originals on top and their reconstructions below."""
     model.eval()
 
     batch = next(iter(loader))
@@ -105,6 +128,7 @@ def save_test_reconstructions(model, loader, device, save_path, max_images=8):
 
 @torch.no_grad()
 def save_generated_samples(model, device, save_path, num_samples=16):
+    """Generates images by sampling z ~ N(0, I) and decoding through the VAE decoder."""
     model.eval()
 
     samples = model.generate(num_samples=num_samples, device=device)
@@ -116,6 +140,12 @@ def save_generated_samples(model, device, save_path, num_samples=16):
 
 @torch.no_grad()
 def save_latent_interpolation(model, loader, device, save_path, num_steps=10):
+    """
+    Linearly interpolates between two encoded images in latent space.
+
+    z = (1 - alpha) * mu_a + alpha * mu_b, alpha in [0, 1].
+    A smooth visual transition indicates a well-structured continuous latent space.
+    """
     model.eval()
 
     batch = next(iter(loader))
@@ -143,6 +173,12 @@ def save_latent_interpolation(model, loader, device, save_path, num_steps=10):
 
 @torch.no_grad()
 def extract_latents(model, loader, device, max_batches=30):
+    """
+    Encodes images and returns their posterior means (mu) as latent representations.
+
+    mu is used instead of a sampled z because it is deterministic and noise-free,
+    giving a more stable representation for visualisation and clustering.
+    """
     model.eval()
 
     latents = []
@@ -170,6 +206,7 @@ def extract_latents(model, loader, device, max_batches=30):
 
 
 def save_latent_pca(latents, save_path):
+    """Projects the latent space to 2-D via PCA and saves a scatter plot."""
     pca = PCA(n_components=2)
     z_2d = pca.fit_transform(latents)
 
@@ -184,6 +221,7 @@ def save_latent_pca(latents, save_path):
 
 
 def save_summary(config, checkpoint_path, output_dir, epoch, best_val_loss):
+    """Writes a human-readable text summary of the experiment and its outputs."""
     summary_path = os.path.join(output_dir, "evaluation_summary.txt")
 
     model_config = config["model"]
@@ -224,6 +262,10 @@ def save_summary(config, checkpoint_path, output_dir, epoch, best_val_loss):
 # -------------------------------------------------------------------
 
 def evaluate(config, checkpoint_path, output_root):
+    """
+    Runs the full qualitative evaluation pipeline for one VAE experiment.
+    All outputs are written to output_root/<experiment_name>/.
+    """
     device = get_device()
 
     experiment_name = config["experiment_name"]

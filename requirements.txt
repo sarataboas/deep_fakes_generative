@@ -1,5 +1,13 @@
-pandas
-scikit-learn
+torch
 torchvision
-tqdm
+numpy
+pandas
 matplotlib
+seaborn
+scikit-learn
+scikit-image
+Pillow
+opencv-python
+tqdm
+facenet-pytorch
+torch-fidelity

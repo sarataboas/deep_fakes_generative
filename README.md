@@ -64,8 +64,6 @@ The following folders are excluded via `.gitignore` and must be created locally:
 
 ```bash
 pip install -r requirements.txt
-# Also required (not in requirements.txt):
-pip install torch torch-fidelity clean-fid scikit-learn
 ```
 
 ---
