@@ -10,7 +10,7 @@ from PIL import Image
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, confusion_matrix
 
 from src.setup import get_device, build_dataloaders
-from classifier.classifier import build_model
+from models.classifier import build_model
 from src.preprocessing import get_test_transforms
 from src.utils import set_seed, save_history, plot_training
 

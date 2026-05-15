@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 """
-Computa FID para todos os modelos VAE treinados.
+Computa FID e Inception Score para todos os modelos GAN.
 
 Uso (a partir da raiz do projecto):
-    python compute_metrics_vae.py                          # todos
-    python compute_metrics_vae.py --experiments vae_perceptual_loss_v9_full_data
+    python compute_metrics_gan.py                        # todos os experimentos
+    python compute_metrics_gan.py --experiments gan_wgan_gp_v4_128  # um só
 
-Resultados guardados em results/vae_metrics.csv
-Imagens temporárias em metrics_tmp/ (partilhado com compute_metrics_gan.py)
+Resultados guardados em results/gan_metrics.csv
+Imagens temporárias em metrics_tmp/ (pode apagar depois)
 """
 
 import os
 import sys
 import argparse
-import importlib
 import subprocess
 
+# ---------------------------------------------------------------------------
+# Dependências
+# ---------------------------------------------------------------------------
 def _install(package):
     subprocess.check_call([sys.executable, "-m", "pip", "install", package, "-q"])
 
@@ -31,7 +33,8 @@ import pandas as pd
 from PIL import Image
 from torchvision import transforms
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from models.gan import Generator
 
 
 # ---------------------------------------------------------------------------
@@ -40,39 +43,41 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 DEVICE         = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CHECKPOINT_DIR = "checkpoints"
 METADATA_PATH  = "face_crop_final/full_face_crop_metadata.csv"
-REAL_BASE_DIR  = "metrics_tmp/real"
+REAL_BASE_DIR  = "metrics_tmp/real"   # directório por resolução: real_64/, real_128/, ...
 GEN_DIR        = "metrics_tmp/generated"
-RESULTS_PATH   = "results/vae_metrics.csv"
+RESULTS_PATH   = "results/gan_metrics.csv"
 N_GENERATED    = 2048
 BATCH_SIZE     = 64
 
-# Mapeamento model.name → (módulo, classe)
-MODEL_REGISTRY = {
-    "vae64"     : ("models.variational_autoencoder",       "BaselineVAE"),
-    "vae64_v2"  : ("models.variational_autoencoder_v2",    "BaselineVAEv2"),
-    "vae128"    : ("models.variational_autoencoder_128",   "VAE128"),
-    "vae128_v2" : ("models.variational_autoencoder_128_v2","VAE128v2"),
-}
-
 EXPERIMENTS = [
-    "vae_perceptual_loss",
-    "vae_perceptual_loss_v2_warmup_early",
-    "vae_perceptual_loss_v3_pixel_weight",
-    "vae_perceptual_loss_v4_pixel_weight_7",
-    "vae_perceptual_loss_v5_upsampling",
-    "vae_perceptual_loss_v6_relu1_1",
-    "vae_perceptual_loss_v7_end_beta",
-    "vae_perceptual_loss_v9_full_data",
-    "vae_perceptual_loss_v10_data_augmentation",
-    "vae_perceptual_loss_v11_latent_dim",
-    "vae_perceptual_loss_v12_64_full_data",
+    "gan_baseline",
+    "gan_v2_balanced",
+    "gan_v3_nsteps",
+    "gan_v4_weaker_d",
+    "gan_v5_noise",
+    "gan_v6_labelflip",
+    "gan_v7_dropout",
+    "gan_v8_spectralnorm",
+    "gan_v9_lr",
+    "gan_v10_dropout",
+    "gan_v11_gradclip",
+    "gan_wgan_gp",
+    "gan_wgan_gp_v2_latent",
+    "gan_wgan_gp_v3_full_data",
+    "gan_wgan_gp_v4_128",
 ]
 
 
 # ---------------------------------------------------------------------------
-# Imagens reais (reutiliza directórios do script GAN se já existirem)
+# Imagens reais
 # ---------------------------------------------------------------------------
 def prepare_real_images(img_size: int) -> str:
+    """
+    Guarda imagens reais do test set (wiki) redimensionadas a img_size.
+    Cada resolução tem o seu próprio directório (real_64/, real_128/, ...)
+    para garantir que o FID compara sempre imagens à mesma resolução.
+    Devolve o caminho do directório.
+    """
     real_dir = os.path.join(REAL_BASE_DIR, f"real_{img_size}")
 
     if os.path.isdir(real_dir) and len(os.listdir(real_dir)) >= 500:
@@ -96,49 +101,39 @@ def prepare_real_images(img_size: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Carregar modelo VAE
+# Carregar Generator
 # ---------------------------------------------------------------------------
-def load_vae(experiment_name):
-    """
-    Carrega o modelo VAE correcto com base em config.model.name.
-    Devolve (model, latent_dim, img_size).
-    """
+def load_generator(experiment_name):
+    """Carrega Generator do checkpoint, lendo img_size do config guardado."""
     ckpt_path = os.path.join(CHECKPOINT_DIR, f"{experiment_name}.pt")
     ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
 
     cfg_model  = ckpt["config"]["model"]
     cfg_preproc = ckpt["config"].get("preprocessing", {})
 
-    model_name = cfg_model.get("name", "vae64")
-    latent_dim = cfg_model.get("latent_dim", 256)
-    feature_maps = cfg_model.get("feature_maps", 64)
-    img_channels = cfg_model.get("img_channels", 3)
-    img_size   = cfg_preproc.get("img_size", 64)
+    feature_maps = cfg_model.get("feature_maps_g") or cfg_model.get("feature_maps", 64)
+    img_size     = cfg_preproc.get("img_size", 64)
 
-    if model_name not in MODEL_REGISTRY:
-        raise ValueError(f"Modelo desconhecido: '{model_name}'. Adiciona ao MODEL_REGISTRY.")
-
-    module_path, class_name = MODEL_REGISTRY[model_name]
-    module = importlib.import_module(module_path)
-    ModelClass = getattr(module, class_name)
-
-    model = ModelClass(
-        img_channels=img_channels,
-        feature_maps=feature_maps,
-        latent_dim=latent_dim,
+    generator = Generator(
+        latent_dim   = cfg_model["latent_dim"],
+        feature_maps = feature_maps,
+        img_channels = cfg_model.get("img_channels", 3),
+        img_size     = img_size,
+        spectral_norm= cfg_model.get("spectral_norm", False),
+        dropout      = cfg_model.get("dropout_g", 0.0),
     ).to(DEVICE)
 
-    model.load_state_dict(ckpt["model_state_dict"])
-    model.eval()
+    generator.load_state_dict(ckpt["generator_state_dict"])
+    generator.eval()
 
-    return model, latent_dim, img_size
+    return generator, cfg_model["latent_dim"], img_size
 
 
 # ---------------------------------------------------------------------------
 # Gerar imagens
 # ---------------------------------------------------------------------------
-def generate_images(model, latent_dim, out_dir):
-    """Gera N_GENERATED imagens usando model.generate() — z ~ N(0, I)."""
+def generate_images(generator, latent_dim, out_dir):
+    """Gera N_GENERATED imagens em out_dir, apagando as anteriores."""
     os.makedirs(out_dir, exist_ok=True)
     for f in os.listdir(out_dir):
         os.remove(os.path.join(out_dir, f))
@@ -147,8 +142,9 @@ def generate_images(model, latent_dim, out_dir):
     with torch.no_grad():
         while n_done < N_GENERATED:
             batch = min(BATCH_SIZE, N_GENERATED - n_done)
-            imgs = model.generate(batch, DEVICE)       # [-1, 1]
-            imgs = ((imgs + 1) / 2).clamp(0, 1)        # [0, 1]
+            z    = torch.randn(batch, latent_dim, device=DEVICE)
+            imgs = generator(z)                          # [-1, 1]
+            imgs = ((imgs + 1) / 2).clamp(0, 1)          # [0, 1]
             imgs = (imgs * 255).byte().permute(0, 2, 3, 1).cpu().numpy()
             for arr in imgs:
                 Image.fromarray(arr, "RGB").save(
@@ -162,16 +158,27 @@ def generate_images(model, latent_dim, out_dir):
 # ---------------------------------------------------------------------------
 # Métricas
 # ---------------------------------------------------------------------------
-def compute_fid(real_dir, gen_dir):
+def compute_metrics(real_dir, gen_dir):
+    """
+    Calcula FID e Inception Score usando torch-fidelity.
+
+    FID  — mede qualidade + diversidade em conjunto (mais baixo = melhor).
+    IS   — mede qualidade e diversidade separadamente em modo self-contained
+           (mais alto = melhor; IS médio de imagens reais de faces ~2–3).
+    """
     metrics = torch_fidelity.calculate_metrics(
         input1  = real_dir,
         input2  = gen_dir,
         cuda    = torch.cuda.is_available(),
         fid     = True,
-        isc     = False,
+        isc     = True,   # Inception Score
         verbose = False,
     )
-    return round(metrics["frechet_inception_distance"], 2)
+    return {
+        "fid"    : round(metrics["frechet_inception_distance"], 2),
+        "is_mean": round(metrics["inception_score_mean"], 3),
+        "is_std" : round(metrics["inception_score_std"],  3),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -179,17 +186,24 @@ def compute_fid(real_dir, gen_dir):
 # ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--experiments", nargs="*", default=None)
-    parser.add_argument("--skip-generation", action="store_true")
+    parser.add_argument(
+        "--experiments", nargs="*", default=None,
+        help="Experimentos a computar (default: todos).",
+    )
+    parser.add_argument(
+        "--skip-generation", action="store_true",
+        help="Reutiliza imagens já geradas em metrics_tmp/ (útil para re-computar métricas).",
+    )
     args = parser.parse_args()
 
     experiments = args.experiments or EXPERIMENTS
 
     print(f"Device: {DEVICE}\n")
 
+    # Carrega resultados já existentes para não repetir experimentos
     if os.path.exists(RESULTS_PATH):
         df_existing = pd.read_csv(RESULTS_PATH)
-        done    = set(df_existing["experiment"].tolist())
+        done = set(df_existing["experiment"].tolist())
         results = df_existing.to_dict("records")
         print(f"Resultados já existentes: {done}\n")
     else:
@@ -213,24 +227,27 @@ def main():
 
         if not args.skip_generation:
             print(f"  A gerar {N_GENERATED} imagens...")
-            model, latent_dim, img_size = load_vae(exp)
-            generate_images(model, latent_dim, gen_dir)
-            del model
+            generator, latent_dim, img_size = load_generator(exp)
+            generate_images(generator, latent_dim, gen_dir)
+            del generator
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         else:
+            # Lê img_size directamente do checkpoint — sem instanciar o modelo
             ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
             img_size = ckpt["config"].get("preprocessing", {}).get("img_size", 64)
             del ckpt
 
+        # Imagens reais à mesma resolução que as geradas — comparação justa
         real_dir = prepare_real_images(img_size)
 
-        print("  A calcular FID...")
-        fid = compute_fid(real_dir, gen_dir)
-        print(f"  FID={fid:.2f} | img_size={img_size}")
+        print("  A calcular FID + IS...")
+        m = compute_metrics(real_dir, gen_dir)
+        print(f"  FID={m['fid']:.2f} | IS={m['is_mean']:.3f} ± {m['is_std']:.3f} | img_size={img_size}")
 
-        results.append({"experiment": exp, "img_size": img_size, "fid": fid})
+        results.append({"experiment": exp, "img_size": img_size, **m})
 
+        # Guarda resultados incrementalmente
         os.makedirs("results", exist_ok=True)
         pd.DataFrame(results).to_csv(RESULTS_PATH, index=False)
 
