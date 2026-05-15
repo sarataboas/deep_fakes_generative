@@ -1,33 +1,33 @@
+import math
 import torch
 import torch.nn as nn
 
 
 def _apply_sn(layer, use_sn):
-    """Aplica spectral normalization a uma camada se use_sn=True."""
     return nn.utils.spectral_norm(layer) if use_sn else layer
 
 
 class Generator(nn.Module):
     """
-    DCGAN Generator para imagens 64x64.
+    Generator flexível para qualquer resolução de saída (64, 128, 256, ...).
 
-    Usa Upsample + Conv2d para evitar checkerboard artifacts.
-    Suporta Spectral Normalization opcional nas camadas conv e FC.
+    Parte de uma representação 4×4 e aplica n_ups blocos de Upsample+Conv
+    até atingir img_size. O número de canais é dividido por 2 em cada bloco.
 
-    A spectral norm normaliza os pesos de cada camada pelo seu maior
-    valor singular, controlando a constante de Lipschitz do modelo.
-    No Generator, estabiliza o treino adversarial e melhora a qualidade
-    do gradiente recebido do Discriminator.
+    Exemplos de canais com feature_maps=64:
+      img_size=64  (n_ups=4): 512→256→128→64→3
+      img_size=128 (n_ups=5): 512→256→128→64→32→3
 
-    Input:  z — (batch_size, latent_dim)  amostrado de N(0, I)
-    Output: imagem — (batch_size, 3, 64, 64) em [-1, 1]
+    Input:  z — (batch_size, latent_dim)
+    Output: imagem — (batch_size, img_channels, img_size, img_size) em [-1, 1]
     """
 
     def __init__(
         self,
         latent_dim: int = 128,
-        feature_maps: int = 32,
+        feature_maps: int = 64,
         img_channels: int = 3,
+        img_size: int = 64,
         spectral_norm: bool = False,
         dropout: float = 0.0,
     ):
@@ -35,6 +35,9 @@ class Generator(nn.Module):
 
         self.latent_dim = latent_dim
         self.feature_maps = feature_maps
+
+        # Número de upsamples: 4×4 → img_size  (64→4, 128→5, 256→6)
+        n_ups = int(math.log2(img_size // 4))
         fm = feature_maps
 
         self.fc = _apply_sn(
@@ -42,7 +45,6 @@ class Generator(nn.Module):
             spectral_norm,
         )
 
-        # Construção por blocos para aplicar sn a cada Conv2d individualmente
         def upsample_block(in_ch, out_ch, last=False):
             layers = [nn.Upsample(scale_factor=2, mode="nearest")]
             layers.append(_apply_sn(
@@ -58,11 +60,14 @@ class Generator(nn.Module):
                 layers.append(nn.Tanh())
             return layers
 
+        # Canais: fm*8 → fm*4 → fm*2 → fm → fm//2 → ... → img_channels
         layers = []
-        layers += upsample_block(fm * 8, fm * 4)   # 4x4   → 8x8
-        layers += upsample_block(fm * 4, fm * 2)   # 8x8   → 16x16
-        layers += upsample_block(fm * 2, fm)        # 16x16 → 32x32
-        layers += upsample_block(fm, img_channels, last=True)  # 32x32 → 64x64
+        ch = fm * 8
+        for i in range(n_ups - 1):
+            out_ch = (fm * 8) >> (i + 1)  # divide por 2 a cada bloco
+            layers += upsample_block(ch, out_ch)
+            ch = out_ch
+        layers += upsample_block(ch, img_channels, last=True)
 
         self.net = nn.Sequential(*layers)
 
@@ -74,25 +79,24 @@ class Generator(nn.Module):
 
 class Discriminator(nn.Module):
     """
-    DCGAN Discriminator para imagens 64x64.
+    Discriminator/Critic flexível para qualquer resolução de entrada.
 
-    Suporta Spectral Normalization opcional nas camadas conv e FC.
+    Aplica n_downs blocos de Conv2d stride=2 até chegar a 4×4,
+    depois um FC → 1. O número de canais duplica em cada bloco
+    (até ao máximo de feature_maps*8).
 
-    No Discriminator, a spectral norm é especialmente importante:
-    limita a capacidade do D de ser demasiado confiante, resolvendo
-    o problema de domínio do D de forma matemática — sem precisar
-    de truques como label smoothing ou dropout.
+    Exemplos de canais com feature_maps=64:
+      img_size=64  (n_downs=4): 3→64→128→256→512→FC
+      img_size=128 (n_downs=5): 3→64→128→256→512→512→FC
 
-    Sem sigmoid na saída — usamos BCEWithLogitsLoss externamente.
-
-    Input:  imagem — (batch_size, 3, 64, 64)
-    Output: logit — (batch_size, 1)
+    Sem sigmoid na saída — loss calculada externamente (WGAN ou BCEWithLogits).
     """
 
     def __init__(
         self,
-        feature_maps: int = 32,
+        feature_maps: int = 64,
         img_channels: int = 3,
+        img_size: int = 64,
         spectral_norm: bool = False,
         dropout: float = 0.0,
         use_batch_norm: bool = True,
@@ -100,14 +104,15 @@ class Discriminator(nn.Module):
         super().__init__()
 
         fm = feature_maps
+        # Número de downsamples stride=2 para chegar de img_size a 4×4
+        n_downs = int(math.log2(img_size // 4))
 
         def conv_block(in_ch, out_ch, bn=True):
             layers = [_apply_sn(
                 nn.Conv2d(in_ch, out_ch, kernel_size=4, stride=2, padding=1),
                 spectral_norm,
             )]
-            # BN desactivado para WGAN-GP: o gradient penalty é calculado
-            # por amostra e o BN cria dependências entre amostras que o invalidam
+            # BN desactivado para WGAN-GP: gradient penalty calculado por amostra
             if bn and use_batch_norm:
                 layers.append(nn.BatchNorm2d(out_ch))
             layers.append(nn.LeakyReLU(0.2, inplace=True))
@@ -115,11 +120,14 @@ class Discriminator(nn.Module):
                 layers.append(nn.Dropout2d(dropout))
             return layers
 
+        # Primeiro bloco sem BN (padrão DCGAN)
         layers = []
-        layers += conv_block(img_channels, fm,      bn=False)  # 64x64 → 32x32  sem BN (padrão DCGAN)
-        layers += conv_block(fm,           fm * 2)             # 32x32 → 16x16
-        layers += conv_block(fm * 2,       fm * 4)             # 16x16 → 8x8
-        layers += conv_block(fm * 4,       fm * 8)             # 8x8   → 4x4
+        layers += conv_block(img_channels, fm, bn=False)
+        ch = fm
+        for i in range(1, n_downs):
+            out_ch = min(fm * (2 ** i), fm * 8)  # cresce até fm*8, depois mantém
+            layers += conv_block(ch, out_ch)
+            ch = out_ch
 
         self.net = nn.Sequential(*layers)
         self.fc = _apply_sn(

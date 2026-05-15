@@ -227,3 +227,6 @@ outputs/
 
 # Face cropped 
 face_crop_final/
+
+fid_tmp/
+metrics_tmp/

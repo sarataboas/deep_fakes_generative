@@ -9,6 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from tqdm import tqdm
+from torch.optim.lr_scheduler import StepLR
 from torchvision.utils import save_image, make_grid
 
 from src.setup import get_device, build_dataloaders
@@ -290,12 +291,14 @@ def run_experiment(config):
     latent_dim = c_model.get("latent_dim", 128)
     feature_maps = c_model.get("feature_maps", 64)
     img_channels = c_model.get("img_channels", 3)
+    img_size = c_preproc.get("img_size", 64)
     use_sn = c_model.get("spectral_norm", False)
 
     generator = Generator(
         latent_dim=latent_dim,
         feature_maps=feature_maps,
         img_channels=img_channels,
+        img_size=img_size,
         spectral_norm=use_sn,
     ).to(device)
 
@@ -303,6 +306,7 @@ def run_experiment(config):
     critic = Discriminator(
         feature_maps=feature_maps,
         img_channels=img_channels,
+        img_size=img_size,
         spectral_norm=use_sn,
         use_batch_norm=False,
     ).to(device)
@@ -321,6 +325,17 @@ def run_experiment(config):
         betas=(c_train.get("beta1", 0.0), c_train.get("beta2", 0.9)),
     )
 
+    scheduler_G = StepLR(
+        optimizer_G,
+        step_size=c_train.get("scheduler_step", 25),
+        gamma=c_train.get("scheduler_gamma", 0.5),
+    )
+    scheduler_C = StepLR(
+        optimizer_C,
+        step_size=c_train.get("scheduler_step", 25),
+        gamma=c_train.get("scheduler_gamma", 0.5),
+    )
+
     n_critic = c_train.get("n_critic", 5)
     lambda_gp = c_train.get("lambda_gp", 10.0)
     grad_clip = c_train.get("grad_clip", 0.0)
@@ -333,7 +348,6 @@ def run_experiment(config):
     fixed_noise = torch.randn(16, latent_dim, device=device)
 
     history = []
-    best_wasserstein = float("inf")
 
     num_epochs = c_train["num_epochs"]
 
@@ -352,12 +366,17 @@ def run_experiment(config):
             epoch_idx=epoch,
         )
 
+        lr_g = optimizer_G.param_groups[0]["lr"]
+        lr_c = optimizer_C.param_groups[0]["lr"]
+
         history.append({
             "epoch": epoch + 1,
             "loss_C": metrics["loss_C"],
             "loss_G": metrics["loss_G"],
             "wasserstein_d": metrics["wasserstein_d"],
             "gradient_penalty": metrics["gradient_penalty"],
+            "lr_g": lr_g,
+            "lr_c": lr_c,
         })
 
         logging.info(
@@ -365,7 +384,8 @@ def run_experiment(config):
             f"Loss C={metrics['loss_C']:.4f} | "
             f"Loss G={metrics['loss_G']:.4f} | "
             f"W={metrics['wasserstein_d']:.4f} | "
-            f"GP={metrics['gradient_penalty']:.4f}"
+            f"GP={metrics['gradient_penalty']:.4f} | "
+            f"lr_g={lr_g:.2e} | lr_c={lr_c:.2e}"
         )
 
         if (epoch + 1) % c_train.get("sample_every", 5) == 0:
@@ -376,10 +396,10 @@ def run_experiment(config):
                 save_path=os.path.join(save_dir, f"generated_epoch_{epoch + 1}.png"),
             )
 
-        # Guarda checkpoint quando a distância de Wasserstein diminui
-        # (G e Critic mais próximos do equilíbrio)
-        if metrics["wasserstein_d"] < best_wasserstein:
-            best_wasserstein = metrics["wasserstein_d"]
+        # Guarda checkpoint a cada sample_every epochs e sempre na última epoch.
+        # A WD não é um proxy fiável de qualidade — o melhor modelo é tipicamente
+        # o mais treinado com LR já decaído.
+        if (epoch + 1) % c_train.get("sample_every", 5) == 0 or epoch == num_epochs - 1:
             torch.save(
                 {
                     "epoch": epoch + 1,
@@ -391,6 +411,9 @@ def run_experiment(config):
                 },
                 os.path.join(checkpoint_dir, f"{config['experiment_name']}.pt"),
             )
+
+        scheduler_G.step()
+        scheduler_C.step()
 
     save_history(history, config["experiment_name"])
     plot_training(config["experiment_name"])
