@@ -1,41 +1,146 @@
-# Deep Learning Discriminative and Generative Models
+# Deep Learning — Discriminative and Generative Models for DeepFake Detection
 
+This project develops and evaluates deep learning models in two complementary directions:
 
-The objective of this work is to develop deep learning discriminative and generative models, applied to the
-context of “deep fakes”. The discriminative models will be designed to classify images as “real” vs. “fake”,
-whereas the generative models will be trained to produce new “fake” examples.
+- **Discriminative models** (CNN classifier) — detect whether an image is real or AI-generated.
+- **Generative models** (VAE, VAE_v2, GAN, WGAN-GP) — synthesise new face images from random noise.
 
+---
 
-### Project Structure and Architecture
-```bash
-├── README.md
-├── configs                                         # Different configurations for model training experiments  
-│   ├── baseline.json
-│   ├── baseline_vae.json
-│   ├── efficientnet.json
-│   ├── kl_annealing_vae_baseline.json
-│   └── latent_capacity_vae.json
-├── models                                         # Models architecture definition
-│   └── variational_autoencoder.py
-├── notebooks                                      # Notebook for visualization of different pipeline stages
-│   └── dataset.ipynb
-├── requirements.txt                               # Dependencies
-├── src                                            # Source code to build the pipeline
-│   ├── build_metadata.py                          # Metadata creation - builds a file to guide data usage through training / evaluation
-│   ├── classifier.py                              # THIS SHOULD BE MOVED TO models/ !!!
-│   ├── dataset.py                                 # Dataset Class creation (from guidelines in Metadata)
-│   ├── preprocessing.py                           # Preprocessing techniques for different models and different data splits
-│   ├── setup.py                                   # Model training setup - gets the available device, builds the data loaders and applies preprocessing
-│   ├── train.py                                   # THIS SHOULD BE MOVED TO training/ !!!
-│   └── utils.py                                   # Helper functions
-└── training                                       # Model training logic
-    └── train_vae.py
+## Project Structure
+
+```
+├── configs/                    # JSON config files for every experiment
+├── models/                     # Model architecture definitions
+│   ├── classifier.py           # BaselineCNN and ResidualCNN
+│   ├── gan.py                  # DCGAN Generator and Discriminator / Critic
+│   ├── variational_autoencoder.py
+│   ├── variational_autoencoder_v2.py
+│   ├── variational_autoencoder_128.py
+│   └── variational_autoencoder_128_v2.py
+├── training/                   # Training scripts
+│   ├── train_classifier.py     # CNN classifier (Trainer class + entry point)
+│   ├── train_logo.py           # Leave-One-Generator-Out classifier experiment
+│   ├── train_gan.py            # DCGAN training loop
+│   ├── train_wgan_gp.py        # WGAN-GP training loop
+│   ├── train_vae.py            # Baseline VAE (MSE loss)
+│   ├── train_vae_perceptual_loss_simple.py
+│   └── train_vae_perceptual_loss.py
+├── evaluation/                 # Evaluation and metric scripts
+│   ├── compute_metrics_gan.py  # FID + Inception Score for all GAN models
+│   ├── compute_metrics_vae.py  # FID for all VAE models
+│   └── evaluate_vae.py
+├── src/                        # Shared utilities
+│   ├── build_metadata.py       # Builds the dataset metadata CSV (train/val/test split)
+│   ├── dataset.py              # PyTorch Dataset class
+│   ├── preprocessing.py        # Transform pipelines (classifier and VAE/GAN)
+│   ├── setup.py                # Device detection and DataLoader builder
+│   └── utils.py                # Seed, history saving, plot generation
+├── EDA/                        # Exploratory data analysis notebooks
+├── notebooks/                  # Additional visualisation notebooks
+├── requirements.txt
+└── README.md
 ```
 
+---
 
+## Folders Not Included in the Repository
 
+The following folders are excluded via `.gitignore` and must be created locally:
 
-### Authors: 
+| Folder | Contents | How to obtain |
+|---|---|---|
+| `data/` | Raw dataset images | Provided separately |
+| `face_crop_final/` | Preprocessed face-cropped images + metadata CSV | Run `src/build_metadata.py` after placing raw data in `data/` |
+| `checkpoints/` | Trained model weights (`.pt` files) | Generated by training scripts |
+| `results/` | Per-epoch training history (`.csv` files) | Generated by training scripts |
+| `plots/` | Training curve images | Generated by training scripts |
+| `outputs/` | Generated images saved during training | Generated by training scripts |
+| `metrics_tmp/` | Temporary images used for FID computation | Generated by evaluation scripts |
+
+---
+
+## Setup
+
+```bash
+pip install -r requirements.txt
+# Also required (not in requirements.txt):
+pip install torch torch-fidelity clean-fid scikit-learn
+```
+
+---
+
+## Preparing the Data
+
+Place the raw images in `data/` with the following structure:
+
+```
+data/
+├── wiki/
+├── inpainting/
+├── insight/
+└── text2img/
+```
+
+Then build the metadata CSV (generates `face_crop_final/face_crop_metadata.csv`):
+
+```bash
+python -m src.build_metadata --config configs/baseline.json
+```
+
+---
+
+## Training
+
+All scripts are run from the project root. Each takes a `--config` argument pointing to a JSON file in `configs/`.
+
+**Classifier:**
+```bash
+python -m training.train_classifier --config configs/baseline.json
+```
+
+**DCGAN:**
+```bash
+python -m training.train_gan --config configs/gan_baseline.json
+```
+
+**WGAN-GP (recommended):**
+```bash
+python -m training.train_wgan_gp --config configs/gan_wgan_gp_v4_128.json
+```
+
+**VAE:**
+```bash
+python -m training.train_vae_perceptual_loss --config configs/vae_perceptual_loss.json
+```
+
+**Leave-One-Generator-Out (LOGO) classifier:**
+```bash
+python -m training.train_logo --config configs/cnn_logo_no_insight.json
+```
+
+---
+
+## Evaluation
+
+FID and Inception Score for GAN models (requires `checkpoints/` to exist):
+```bash
+python evaluation/compute_metrics_gan.py
+# Or for a specific model:
+python evaluation/compute_metrics_gan.py --experiments gan_wgan_gp_v4_128
+```
+
+FID for VAE models:
+```bash
+python evaluation/compute_metrics_vae.py
+```
+
+Results are saved to `results/gan_metrics.csv` and `results/vae_metrics.csv`.
+
+---
+
+## Authors
+
 - Rodrigo Taveira
 - Rodrigo Batista
 - Sara Táboas
