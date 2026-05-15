@@ -15,8 +15,6 @@ from src.utils import set_seed, save_history
 
 from models.variational_autoencoder import BaselineVAE
 from models.variational_autoencoder_128 import VAE128
-from models.variational_autoencoder_v2 import BaselineVAEv2
-from models.variational_autoencoder_128_v2 import VAE128v2
 
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
@@ -27,32 +25,17 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 # -------------------------------------------------------------------
 
 def build_vae_model(model_config):
-    model_name = model_config.get("architecture", "vae64")
+    model_name = model_config.get("name", "vae64")
 
-    if model_name == "4_layers":
+    if model_name == "vae64":
         return BaselineVAE(
             img_channels=model_config.get("img_channels", 3),
             feature_maps=model_config.get("feature_maps", 32),
             latent_dim=model_config.get("latent_dim", 128),
         )
 
-    if model_name == "5_layers":
+    if model_name == "vae128":
         return VAE128(
-            img_channels=model_config.get("img_channels", 3),
-            feature_maps=model_config.get("feature_maps", 32),
-            latent_dim=model_config.get("latent_dim", 256),
-        )
-
-    # Variantes v2: decoder Upsample + Conv2d (sem checkerboard artifacts)
-    if model_name == "4_layers_v2":
-        return BaselineVAEv2(
-            img_channels=model_config.get("img_channels", 3),
-            feature_maps=model_config.get("feature_maps", 32),
-            latent_dim=model_config.get("latent_dim", 128),
-        )
-
-    if model_name == "5_layers_v2":
-        return VAE128v2(
             img_channels=model_config.get("img_channels", 3),
             feature_maps=model_config.get("feature_maps", 32),
             latent_dim=model_config.get("latent_dim", 256),
@@ -67,52 +50,22 @@ def build_vae_model(model_config):
 
 class VGGPerceptualLoss(nn.Module):
     """
-    Multi-layer perceptual loss using pretrained VGG16 features.
+    Perceptual loss using pretrained VGG16 features.
 
-    Extrai features em múltiplas camadas intermédias e calcula MSE
-    normalizado em cada uma, somando os resultados — conforme o paper.
-
-    As camadas usadas por defeito são relu1_2, relu2_1, relu3_1:
-      - relu1_2 (layer 3):  cor e textura de baixo nível
-      - relu2_1 (layer 6):  contornos e padrões locais
-      - relu3_1 (layer 11): estrutura facial global
-
-    Inclui relu1_2 é essencial: sem ela a loss é cega à cor.
-
-    Assume imagens normalizadas em [-1, 1].
+    Assumes input images are normalized in [-1, 1].
+    Internally converts them to ImageNet normalization for VGG.
     """
 
-    # Índices das camadas relu na VGG16.features
-    LAYER_MAP = {
-        "relu1_1": 1,  "relu1_2": 3,
-        "relu2_1": 6,  "relu2_2": 8,
-        "relu3_1": 11,
-    }
-
-    def __init__(self, device, layers=None):
+    def __init__(self, device, layer_cutoff=16):
         super().__init__()
 
-        if layers is None:
-            layers = ["relu1_2", "relu2_1", "relu3_1"]
+        weights = VGG16_Weights.IMAGENET1K_V1
+        vgg = vgg16(weights=weights).features[:layer_cutoff].to(device).eval()
 
-        # Ordena por índice para garantir que as fatias são sequenciais
-        layer_indices = sorted(
-            [(name, self.LAYER_MAP[name]) for name in layers],
-            key=lambda x: x[1],
-        )
-
-        vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1).features
         for param in vgg.parameters():
             param.requires_grad = False
-        vgg = vgg.to(device).eval()
 
-        # Divide a VGG em fatias não-sobrepostas: cada fatia recebe
-        # como input a saída da fatia anterior, tal como na rede original.
-        self.slices = nn.ModuleList()
-        prev = 0
-        for _, idx in layer_indices:
-            self.slices.append(nn.Sequential(*list(vgg.children())[prev : idx + 1]))
-            prev = idx + 1
+        self.vgg = vgg
 
         self.register_buffer(
             "mean",
@@ -126,22 +79,17 @@ class VGGPerceptualLoss(nn.Module):
     def preprocess_for_vgg(self, x):
         x = (x + 1.0) / 2.0
         x = torch.clamp(x, 0.0, 1.0)
-        return (x - self.mean) / self.std
+        x = (x - self.mean) / self.std
+        return x
 
     def forward(self, recon_imgs, imgs):
-        recon = self.preprocess_for_vgg(recon_imgs)
-        # imgs.detach() para que nenhum gradiente passe pelas features reais
-        real = self.preprocess_for_vgg(imgs.detach())
+        recon_imgs = self.preprocess_for_vgg(recon_imgs)
+        imgs = self.preprocess_for_vgg(imgs)
 
-        total_loss = 0.0
-        for slice_net in self.slices:
-            recon = slice_net(recon)
-            with torch.no_grad():
-                real = slice_net(real)
-            # MSE normalizado pelo nº de elementos — corresponde à fórmula do paper
-            total_loss = total_loss + F.mse_loss(recon, real)
+        recon_features = self.vgg(recon_imgs)
+        img_features = self.vgg(imgs)
 
-        return total_loss
+        return F.l1_loss(recon_features, img_features)
 
 
 def vae_perceptual_loss(
@@ -404,7 +352,7 @@ def run_experiment(config):
 
     perceptual_loss_fn = VGGPerceptualLoss(
         device=device,
-        layers=c_train.get("perceptual_layers", ["relu1_2", "relu2_1", "relu3_1"]),
+        layer_cutoff=c_train.get("perceptual_layer_cutoff", 16),
     ).to(device)
 
     optimizer = torch.optim.Adam(
