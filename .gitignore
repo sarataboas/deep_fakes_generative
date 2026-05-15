@@ -224,6 +224,7 @@ plots/
 # Results
 results/
 outputs/
+vae_evaluation/
 
 # Face cropped 
 face_crop_final/

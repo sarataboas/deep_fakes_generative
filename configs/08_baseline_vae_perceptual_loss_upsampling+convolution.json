@@ -1,5 +1,5 @@
 {
-  "experiment_name": "vae_perceptual_loss",
+  "experiment_name": "baseline_vae_perceptual_loss",
 
   "seed": 42,
 
@@ -15,29 +15,29 @@
   },
 
   "model": {
-    "architecture": "4_layers",
-    "latent_dim": 128,
+    "architecture": "4_layers_v2",
+    "latent_dim": 256,
     "feature_maps": 64,
     "img_channels": 3
   },
 
   "training": {
     "num_epochs": 100,
-    "batch_size": 64,
+    "batch_size": 32,
     "num_workers": 2,
 
     "lr": 0.00005,
     "weight_decay": 0.0,
 
     "pixel_weight": 5.0,
-    "perceptual_layers": ["relu1_2", "relu2_1", "relu3_1"],
+    "perceptual_layers": ["relu1_1","relu1_2", "relu2_1", "relu3_1"],
 
     "kl_annealing": {
       "enabled": true,
       "type": "linear",
       "start_beta": 0.0,
-      "end_beta": 0.5,
-      "warmup_epochs": 70
+      "end_beta": 0.05,
+      "warmup_epochs": 20
     },
 
     "scheduler": {
@@ -47,10 +47,10 @@
 
     "early_stopping": {
       "enabled": false, 
-      "patience": 10
+      "patience": 20
     },
 
-    "save_dir": "outputs/vae_perceptual_loss",
+    "save_dir": "outputs/baseline_vae_perceptual_loss",
     "checkpoint_dir": "checkpoints",
 
     "sample_every": 5,
