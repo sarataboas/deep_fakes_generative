@@ -3,7 +3,7 @@ import torch
 import os
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from src.dataset import DeepFakeDataset
-from src.preprocessing import get_train_transforms, get_test_transforms, get_vae_transforms
+from src.preprocessing import get_train_transforms, get_test_transforms, get_vae_transforms, get_vae_val_transforms
 
 def get_device():
     """Retorna o dispositivo disponível: CUDA, MPS ou CPU."""
@@ -60,8 +60,8 @@ def build_dataloaders(config_data: dict, config_train: dict, config_preproc: dic
 
     if preprocessing_type == "vae":
         train_transform = get_vae_transforms(img_size=img_size)
-        val_transform = get_vae_transforms(img_size=img_size)
-        test_transform = get_vae_transforms(img_size=img_size)
+        val_transform = get_vae_val_transforms(img_size=img_size)
+        test_transform = get_vae_val_transforms(img_size=img_size)
 
     elif preprocessing_type == "classifier":
         train_transform = get_train_transforms(img_size=img_size)

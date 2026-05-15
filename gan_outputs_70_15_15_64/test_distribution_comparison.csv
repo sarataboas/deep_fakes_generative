@@ -1,0 +1,7 @@
+experiment_id,experiment_name,stage,checkpoint,num_eval_images,status
+gan_50_all,"GAN - 50 epochs, all train data",Baseline,gan_outputs_70_15_15_64/gan_50_all/gan_deepfake_final.pth,0,skipped: Missing final checkpoint: gan_outputs_70_15_15_64/gan_50_all/gan_deepfake_final.pth
+gan_100_3000t,"GAN - 100 epochs, 3000 train images",Data-size test,gan_outputs_70_15_15_64/gan_100_3000t/gan_deepfake_final.pth,0,skipped: Missing final checkpoint: gan_outputs_70_15_15_64/gan_100_3000t/gan_deepfake_final.pth
+gan_100_all,"GAN - 100 epochs, all train data",Longer training,gan_outputs_70_15_15_64/gan_100_all/gan_deepfake_final.pth,0,skipped: Missing final checkpoint: gan_outputs_70_15_15_64/gan_100_all/gan_deepfake_final.pth
+gan_exp01_lower_lrD,Exp01 - lower Discriminator learning rate,Training-balance modification,gan_outputs_70_15_15_64/gan_exp01_lower_lrD/gan_deepfake_final.pth,0,skipped: Missing final checkpoint: gan_outputs_70_15_15_64/gan_exp01_lower_lrD/gan_deepfake_final.pth
+gan_exp02_two_G_updates,Exp02 - two Generator updates per D update,Training-balance modification,gan_outputs_70_15_15_64/gan_exp02_two_G_updates/gan_deepfake_final.pth,0,skipped: Missing final checkpoint: gan_outputs_70_15_15_64/gan_exp02_two_G_updates/gan_deepfake_final.pth
+gan_G_features_128,GAN - increased Generator features,Generator capacity increase,gan_outputs_70_15_15_64/gan_G_features_128/gan_deepfake_final.pth,0,skipped: Missing final checkpoint: gan_outputs_70_15_15_64/gan_G_features_128/gan_deepfake_final.pth

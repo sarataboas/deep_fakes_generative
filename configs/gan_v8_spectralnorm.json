@@ -1,0 +1,45 @@
+{
+  "experiment_name": "gan_v8_spectralnorm",
+  "seed": 42,
+
+  "data": {
+    "metadata_path": "face_crop_final/face_crop_metadata.csv",
+    "train_source": ["wiki"]
+  },
+
+  "preprocessing": {
+    "img_size": 64,
+    "type": "vae"
+  },
+
+  "model": {
+    "latent_dim": 128,
+    "feature_maps": 64,
+    "img_channels": 3,
+    "spectral_norm": true,
+    "dropout_d": 0.0
+  },
+
+  "training": {
+    "num_epochs": 100,
+    "batch_size": 128,
+    "num_workers": 4,
+
+    "lr_g": 0.0002,
+    "lr_d": 0.0001,
+    "beta1": 0.5,
+    "beta2": 0.999,
+
+    "label_smoothing": 0.2,
+    "n_steps_G": 1,
+    "flip_prob": 0.0,
+
+    "noise_std_start": 0.0,
+    "noise_std_end": 0.0,
+
+    "save_dir": "outputs/gan_v8_spectralnorm",
+    "checkpoint_dir": "checkpoints",
+
+    "sample_every": 5
+  }
+}
